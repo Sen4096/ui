@@ -321,7 +321,7 @@ function library:Watermark(text)
 
     local WatermarkFunctions = {}
     function WatermarkFunctions:AddWatermark(text)
-        tetx = text or "Mentor"
+        tetx = text or "xsx v2"
 
         local edge = Instance.new("Frame")
         local edgeCorner = Instance.new("UICorner")
