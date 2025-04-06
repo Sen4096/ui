@@ -1,5 +1,3 @@
-UI lib made by bungie#0001
-
 -- / Locals
 local Workspace = game:GetService("Workspace")
 local Player = game:GetService("Players").LocalPlayer
@@ -74,8 +72,8 @@ local drag = function(obj, latency)
 end
 
 local library = {
-    version = "2",
-    title = title or "Jay" .. tostring(math.random(1,366)),
+    version = "2.0.2",
+    title = title or "xsx " .. tostring(math.random(1,366)),
     fps = 0,
     rank = "private"
 }
@@ -197,7 +195,7 @@ function library:Watermark(text)
         end
     end
 
-    tetx = text or "xsx"
+    tetx = text or "xsx v2"
 
     local watermark = Instance.new("ScreenGui")
     local watermarkPadding = Instance.new("UIPadding")
@@ -234,7 +232,7 @@ function library:Watermark(text)
     edge.Name = "edge"
     edge.Parent = watermark
     edge.AnchorPoint = Vector2.new(0.5, 0.5)
-    edge.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    edge.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     edge.Position = UDim2.new(0.5, 0, -0.03, 0)
     edge.Size = UDim2.new(0, 0, 0, 26)
     edge.BackgroundTransparency = 1
@@ -538,7 +536,7 @@ function library:InitNotifications(text, duration, callback)
     
         edge.Name = "edge"
         edge.Parent = Notifications
-        edge.BackgroundColor3 = Color3.fromRGB(25, 0, 60)
+        edge.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
         edge.BackgroundTransparency = 1.000
         edge.Size = UDim2.new(0, 0, 0, 26)
     
@@ -745,7 +743,7 @@ function library:Introduction()
     barLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
     barLayout.SortOrder = Enum.SortOrder.LayoutOrder
     
-    xsxLogo.Name = "xsx"
+    xsxLogo.Name = "xsxLogo"
     xsxLogo.Parent = background
     xsxLogo.AnchorPoint = Vector2.new(0.5, 0.5)
     xsxLogo.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -765,7 +763,7 @@ function library:Introduction()
     hashLogo.Position = UDim2.new(0.5, 0, 0.5, 0)
     hashLogo.Size = UDim2.new(0, 150, 0, 150)
     hashLogo.Visible = true
-    hashLogo.Image = "http://www.roblox.com/asset/?id=1049060234"
+    hashLogo.Image = "http://www.roblox.com/asset/?id=9365069861"
     hashLogo.ImageColor3 = Color3.fromRGB(159, 115, 255)
     hashLogo.ImageTransparency = 1
     
@@ -775,7 +773,7 @@ function library:Introduction()
     xsx.BackgroundTransparency = 1.000
     xsx.Size = UDim2.new(0, 80, 0, 21)
     xsx.Font = Enum.Font.Code
-    xsx.Text = "powered by Mentor"
+    xsx.Text = "powered by xsx"
     xsx.TextColor3 = Color3.fromRGB(124, 124, 124)
     xsx.TextSize = 10.000
     xsx.TextTransparency = 1
