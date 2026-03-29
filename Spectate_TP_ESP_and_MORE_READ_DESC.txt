@@ -1,0 +1,854 @@
+-- ==================== IMMEDIATE BYPASS ACTIVATION ====================
+-- I put this first so the anti‑cheat gets hooked before anything else.
+local function InstantBypass()
+    local success, result = pcall(function()
+        if not getrawmetatable then
+            warn("⚠️ Executor may not support all bypass features")
+            return
+        end
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        local oldNamecall = mt.__namecall
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if typeof(self) == "Instance" and (method == "FireServer" or method == "InvokeServer") then
+                local remoteName = tostring(self):lower()
+                local blockPatterns = {
+                    "anticheat", "detection", "flag", "report", 
+                    "speed", "fly", "tp", "jump", "kick", "ban",
+                    "ac", "moderate", "punish", "check", "detect",
+                    "log", "audit", "track", "monitor", "walkspeed"
+                }
+                for _, pattern in ipairs(blockPatterns) do
+                    if remoteName:find(pattern) then
+                        return nil
+                    end
+                end
+            end
+            return oldNamecall(self, ...)
+        end)
+        local oldIndex = mt.__index
+        mt.__index = newcclosure(function(self, key)
+            if typeof(self) == "Instance" and self:IsA("Humanoid") then
+                if key == "WalkSpeed" then
+                    return 16
+                elseif key == "JumpPower" then
+                    return 50
+                end
+            end
+            return oldIndex(self, key)
+        end)
+    end)
+    if success then
+        print("✅ Anti-Cheat Bypass permanently enabled")
+    else
+        warn("⚠️ Bypass setup failed - continuing without bypass")
+    end
+end
+pcall(InstantBypass)
+task.wait(3) -- give the bypass a moment to settle
+
+-- Services
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Camera = Workspace.CurrentCamera
+
+-- Local Player
+local LocalPlayer = Players.LocalPlayer
+local mouse = LocalPlayer:GetMouse()
+
+-- ==================== RAYFIELD LOADING ====================
+-- Rayfield is the UI library, I load it from a few URLs in case one is down.
+local RayfieldLibrary = nil
+local RayfieldLoaded = false
+local urls = {
+    'https://sirius.menu/rayfield',
+    'https://raw.githubusercontent.com/shlexware/Rayfield/main/source',
+    'https://pastebin.com/raw/0euBxM0f',
+    'https://raw.githubusercontent.com/AreaGamer01/RobloxScripts/main/Rayfield.lua'
+}
+print("📦 Loading Rayfield UI Library...")
+for i, url in ipairs(urls) do
+    local success, result = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if success and result and #result > 1000 then
+        local loadSuccess, loaded = pcall(loadstring, result)
+        if loadSuccess and loaded then
+            if type(loaded) == "function" then
+                local initSuccess, initResult = pcall(loaded)
+                if initSuccess and initResult then
+                    RayfieldLibrary = initResult
+                    RayfieldLoaded = true
+                    print("✅ Rayfield initialized from URL " .. i)
+                    break
+                end
+            else
+                RayfieldLibrary = loaded
+                RayfieldLoaded = true
+                print("✅ Rayfield loaded directly from URL " .. i)
+                break
+            end
+        end
+    end
+    print("⚠️ URL " .. i .. " failed, trying next...")
+    task.wait(1)
+end
+if not RayfieldLoaded or not RayfieldLibrary then
+    warn("❌ CRITICAL: Could not load Rayfield UI library")
+    return
+end
+
+-- ==================== VARIABLES ====================
+-- All my variables go here
+local spectating = false
+local targetPlayer = nil
+local originalCameraSubject = nil
+local originalCameraType = nil
+
+-- ESP Variables
+local espEnabled = false
+local espType = "Line + Box"
+local espColor = Color3.fromRGB(255, 0, 0)
+local espConnections = {}
+local espObjects = {}
+
+-- Player Tab Variables
+local invisibleEnabled = false
+local flyEnabled = false
+local flySpeed = 80
+local flyConnection = nil
+local originalTransparency = {}
+local originalCollision = {}
+local speedEnabled = false
+local speedValue = 80
+local originalSpeed = 16
+local speedConnection = nil
+local speedTweenConnection = nil
+local speedForceConnection = nil  -- this one forces speed every frame
+local flyTweenConnection = nil
+local originalGravity = 196.2
+
+-- ==================== NPC FUNCTIONS ====================
+-- Pookie is the NPC we can teleport to
+local npcName = "Pookie"
+local function FindNPC()
+    for _, v in ipairs(Workspace:GetDescendants()) do
+        if v:IsA("Model") and v.Name:lower():find(npcName:lower()) then
+            return v
+        end
+        if v:IsA("Part") and v.Name:lower():find(npcName:lower()) then
+            return v
+        end
+    end
+    return nil
+end
+
+local function GetNPCPosition()
+    local npc = FindNPC()
+    if not npc then return nil end
+    if npc:IsA("Model") and npc.PrimaryPart then
+        return npc.PrimaryPart.Position
+    elseif npc:IsA("BasePart") then
+        return npc.Position
+    end
+    return nil
+end
+
+local function TeleportToNPC()
+    local npcPos = GetNPCPosition()
+    if not npcPos then return false end
+    local character = LocalPlayer.Character
+    if character then
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        if rootPart then
+            rootPart.CFrame = CFrame.new(npcPos + Vector3.new(3, 0, 0))
+            return true
+        end
+    end
+    return false
+end
+
+-- ==================== CURSOR VISIBILITY ====================
+-- Keeps the mouse visible while using the UI
+local function ForceCursorVisible()
+    pcall(function()
+        UserInputService.MouseIconEnabled = true
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        GuiService.SelectedObject = nil
+    end)
+end
+ForceCursorVisible()
+spawn(function()
+    while true do
+        task.wait(2)
+        if not spectating then
+            pcall(ForceCursorVisible)
+        end
+    end
+end)
+
+-- ==================== WINDOW CREATION ====================
+-- Creating the main window (Rayfield)
+local Window = RayfieldLibrary:CreateWindow({
+    Name = "Fight For NY",
+    LoadingTitle = "Fight For NY",
+    LoadingSubtitle = "by Khaos",
+    ConfigurationSaving = { Enabled = true, FolderName = "FightForNY", FileName = "Config" },
+    Discord = { Enabled = false },
+    KeySystem = false
+})
+task.wait(0.5)
+
+-- ==================== PLAYER TAB ====================
+local PlayerTab = Window:CreateTab("Player", nil)
+PlayerTab:CreateSection("🛡️ Protection Status")
+PlayerTab:CreateParagraph({ Title = "Anti-Cheat Bypass", Content = "✅ PERMANENTLY ENABLED\n• Remote blocking active\n• Speed spoofing active" })
+
+local MovementSection = PlayerTab:CreateSection("Movement")
+local function BlockSprintKey()
+    if speedConnection then speedConnection:Disconnect() end
+    speedConnection = UserInputService.InputBegan:Connect(function(input, gp)
+        if speedEnabled and input.KeyCode == Enum.KeyCode.LeftShift then
+            return true
+        end
+    end)
+end
+
+-- Continuous speed enforcement (beats the game's reset)
+local function StartSpeedForce()
+    if speedForceConnection then speedForceConnection:Disconnect() end
+    speedForceConnection = RunService.RenderStepped:Connect(function()
+        if not speedEnabled then return end
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChild("Humanoid")
+            if hum and hum.WalkSpeed ~= speedValue then
+                hum.WalkSpeed = speedValue
+            end
+        end
+    end)
+end
+
+local function StopSpeedForce()
+    if speedForceConnection then
+        speedForceConnection:Disconnect()
+        speedForceConnection = nil
+    end
+end
+
+-- Smooth speed transition (makes it look more natural)
+local function SmoothSpeedTransition(target, dur)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChild("Humanoid")
+    if not hum then return end
+    local start = hum.WalkSpeed
+    local steps = 20
+    local stepTime = dur / steps
+    local inc = (target - start) / steps
+    if speedTweenConnection then speedTweenConnection:Disconnect() end
+    local step = 0
+    speedTweenConnection = RunService.Heartbeat:Connect(function()
+        if step < steps then
+            step = step + 1
+            pcall(function() hum.WalkSpeed = start + inc * step end)
+        else
+            pcall(function() hum.WalkSpeed = target end)
+            speedTweenConnection:Disconnect()
+            speedTweenConnection = nil
+        end
+    end)
+end
+
+local SpeedToggle = PlayerTab:CreateToggle({
+    Name = "Speed",
+    Content = "Increase movement speed to " .. speedValue,
+    CurrentValue = false,
+    Flag = "speed_toggle",
+    Callback = function(v)
+        pcall(function()
+            speedEnabled = v
+            local char = LocalPlayer.Character
+            if not char then
+                RayfieldLibrary:Notify({Title="Error",Content="No character",Duration=3})
+                SpeedToggle:Set(false)
+                return
+            end
+            local hum = char:FindFirstChild("Humanoid")
+            if not hum then
+                RayfieldLibrary:Notify({Title="Error",Content="No humanoid",Duration=3})
+                SpeedToggle:Set(false)
+                return
+            end
+            if v then
+                originalSpeed = hum.WalkSpeed
+                SmoothSpeedTransition(speedValue, 1)
+                BlockSprintKey()
+                StartSpeedForce()
+                RayfieldLibrary:Notify({Title="Speed",Content="Speed enabled: "..speedValue,Duration=2})
+            else
+                SmoothSpeedTransition(originalSpeed, 1)
+                if speedConnection then speedConnection:Disconnect() speedConnection = nil end
+                StopSpeedForce()
+                RayfieldLibrary:Notify({Title="Speed",Content="Speed disabled",Duration=2})
+            end
+        end)
+    end
+})
+local SpeedSlider = PlayerTab:CreateSlider({
+    Name = "Speed Value",
+    Range = {16,150},
+    Increment = 1,
+    Suffix = "WalkSpeed",
+    CurrentValue = 80,
+    Flag = "speed_slider",
+    Callback = function(v)
+        speedValue = v
+        if speedEnabled then
+            pcall(function()
+                local char = LocalPlayer.Character
+                if char then
+                    local hum = char:FindFirstChild("Humanoid")
+                    if hum then
+                        SmoothSpeedTransition(v, 0.5)
+                        hum.WalkSpeed = v
+                    end
+                end
+            end)
+        end
+    end
+})
+
+local function SmoothFlyTransition(enabled, dur)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChild("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+    if enabled then
+        originalGravity = Workspace.Gravity
+        local steps = 20
+        local stepTime = dur / steps
+        local gravStep = originalGravity / steps
+        if flyTweenConnection then flyTweenConnection:Disconnect() end
+        local step = 0
+        flyTweenConnection = RunService.Heartbeat:Connect(function()
+            if step < steps then
+                step = step + 1
+                Workspace.Gravity = math.max(0, originalGravity - gravStep * step)
+            else
+                Workspace.Gravity = 0
+                hum.PlatformStand = true
+                flyConnection = RunService.RenderStepped:Connect(function()
+                    if not flyEnabled or not char or not char.Parent then return end
+                    local dir = Vector3.new()
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + Camera.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - Camera.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - Camera.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + Camera.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0,1,0) end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir + Vector3.new(0,-1,0) end
+                    if dir.Magnitude > 0 then
+                        dir = dir.Unit
+                        root.Velocity = dir * flySpeed
+                    else
+                        root.Velocity = Vector3.new(0,0,0)
+                    end
+                    for _, part in ipairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") and part ~= root then
+                            part.CanCollide = false
+                        end
+                    end
+                end)
+                flyTweenConnection:Disconnect()
+                flyTweenConnection = nil
+            end
+        end)
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part ~= root then
+                originalCollision[part] = part.CanCollide
+                part.CanCollide = false
+            end
+        end
+    else
+        if flyTweenConnection then flyTweenConnection:Disconnect() end
+        local steps = 20
+        local stepTime = 0.05
+        local gravStep = originalGravity / steps
+        local step = 0
+        flyTweenConnection = RunService.Heartbeat:Connect(function()
+            if step < steps then
+                step = step + 1
+                Workspace.Gravity = gravStep * step
+            else
+                Workspace.Gravity = originalGravity
+                if char then
+                    if hum then hum.PlatformStand = false end
+                    if root then root.Velocity = Vector3.new(0,0,0) end
+                    for part, orig in pairs(originalCollision) do
+                        pcall(function() part.CanCollide = orig end)
+                    end
+                    originalCollision = {}
+                end
+                if flyConnection then flyConnection:Disconnect() flyConnection = nil end
+                flyTweenConnection:Disconnect()
+                flyTweenConnection = nil
+            end
+        end)
+    end
+end
+local FlyToggle = PlayerTab:CreateToggle({
+    Name = "Fly",
+    Content = "Enable flight mode (speed: 80)",
+    CurrentValue = false,
+    Flag = "fly_toggle",
+    Callback = function(v)
+        pcall(function()
+            flyEnabled = v
+            local char = LocalPlayer.Character
+            if not char then
+                RayfieldLibrary:Notify({Title="Error",Content="No character",Duration=3})
+                FlyToggle:Set(false)
+                return
+            end
+            local hum = char:FindFirstChild("Humanoid")
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if not hum or not root then
+                RayfieldLibrary:Notify({Title="Error",Content="Invalid character",Duration=3})
+                FlyToggle:Set(false)
+                return
+            end
+            if v then
+                SmoothFlyTransition(true, 1.5)
+                RayfieldLibrary:Notify({Title="Fly",Content="Flight enabled",Duration=3})
+            else
+                SmoothFlyTransition(false, 1)
+                RayfieldLibrary:Notify({Title="Fly",Content="Flight disabled",Duration=2})
+            end
+        end)
+    end
+})
+
+local VisualSection = PlayerTab:CreateSection("Visual")
+local function SetInvisible(enabled)
+    local char = LocalPlayer.Character
+    if not char then return end
+    if enabled then
+        for _, d in ipairs(char:GetDescendants()) do
+            if d:IsA("BasePart") then
+                originalTransparency[d] = d.Transparency
+                d.Transparency = 1
+            end
+        end
+        local hum = char:FindFirstChild("Humanoid")
+        if hum then
+            originalTransparency[hum] = hum.Transparency
+            hum.Transparency = 1
+        end
+    else
+        for obj, t in pairs(originalTransparency) do
+            pcall(function() obj.Transparency = t end)
+        end
+        originalTransparency = {}
+    end
+end
+local InvisibleToggle = PlayerTab:CreateToggle({
+    Name = "Invisible",
+    Content = "Make your character invisible",
+    CurrentValue = false,
+    Flag = "invisible_toggle",
+    Callback = function(v)
+        pcall(function()
+            invisibleEnabled = v
+            local char = LocalPlayer.Character
+            if not char then
+                RayfieldLibrary:Notify({Title="Error",Content="No character",Duration=3})
+                InvisibleToggle:Set(false)
+                return
+            end
+            SetInvisible(v)
+            RayfieldLibrary:Notify({Title="Invisible",Content=v and "You are now invisible" or "You are now visible",Duration=2})
+        end)
+    end
+})
+
+LocalPlayer.CharacterAdded:Connect(function(newChar)
+    task.wait(0.5)
+    if invisibleEnabled then
+        task.wait(0.2)
+        SetInvisible(true)
+    end
+    if flyEnabled then
+        task.wait(0.2)
+        SmoothFlyTransition(true, 1)
+    end
+    if speedEnabled then
+        task.wait(0.2)
+        local hum = newChar:FindFirstChild("Humanoid")
+        if hum then
+            hum.WalkSpeed = speedValue
+        end
+        BlockSprintKey()
+        StartSpeedForce()
+    end
+end)
+
+-- ==================== SPECTATE TAB ====================
+local SpectateTab = Window:CreateTab("Spectate", nil)
+SpectateTab:CreateSection("Spectate Controls")
+local function GetPlayerList()
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then table.insert(list, p.Name) end
+    end
+    return list
+end
+local playerList = GetPlayerList()
+local defaultOption = (#playerList > 0) and playerList[1] or ""
+targetPlayer = (#playerList > 0) and Players:FindFirstChild(playerList[1]) or nil
+local PlayerDropdown = SpectateTab:CreateDropdown({
+    Name = "Select Player",
+    Options = playerList,
+    CurrentOption = defaultOption,
+    MultipleOptions = false,
+    Flag = "player_dropdown",
+    Callback = function(opt)
+        if opt and type(opt)=="table" and #opt>0 then
+            targetPlayer = Players:FindFirstChild(opt[1])
+        end
+    end
+})
+local function UpdateDropdown()
+    local new = GetPlayerList()
+    pcall(function()
+        PlayerDropdown:SetOptions(new)
+        if #new>0 and not targetPlayer then
+            targetPlayer = Players:FindFirstChild(new[1])
+        end
+    end)
+end
+Players.PlayerAdded:Connect(function() task.wait(0.5) UpdateDropdown() end)
+Players.PlayerRemoving:Connect(function(p)
+    if spectating and targetPlayer == p then
+        SpectateToggle:Set(false)
+        targetPlayer = nil
+    end
+    UpdateDropdown()
+end)
+local function StartSpectating(p)
+    if not p then
+        RayfieldLibrary:Notify({Title="Error",Content="No player selected",Duration=3})
+        return false
+    end
+    if p == LocalPlayer then
+        RayfieldLibrary:Notify({Title="Error",Content="Cannot spectate yourself",Duration=3})
+        return false
+    end
+    local char = p.Character
+    if not char then
+        local t = 0
+        while not char and t < 50 do
+            task.wait(0.1)
+            char = p.Character
+            t = t+1
+        end
+    end
+    if not char or not char:FindFirstChild("HumanoidRootPart") then
+        RayfieldLibrary:Notify({Title="Error",Content="Player has no valid character",Duration=3})
+        return false
+    end
+    originalCameraSubject = Camera.CameraSubject
+    originalCameraType = Camera.CameraType
+    Camera.CameraType = Enum.CameraType.Watch
+    Camera.CameraSubject = char.HumanoidRootPart
+    spectating = true
+    targetPlayer = p
+    UserInputService.MouseIconEnabled = false
+    RayfieldLibrary:Notify({Title="Spectate",Content="Now spectating: "..p.Name,Duration=3})
+    p.CharacterAdded:Connect(function(newChar)
+        task.wait(0.5)
+        if spectating and targetPlayer == p then
+            local root = newChar:FindFirstChild("HumanoidRootPart")
+            if root then Camera.CameraSubject = root end
+        end
+    end)
+    return true
+end
+local function StopSpectating()
+    pcall(function()
+        Camera.CameraType = originalCameraType or Enum.CameraType.Custom
+        Camera.CameraSubject = originalCameraSubject or (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid"))
+    end)
+    spectating = false
+    UserInputService.MouseIconEnabled = true
+    ForceCursorVisible()
+    RayfieldLibrary:Notify({Title="Spectate",Content="Stopped spectating",Duration=2})
+end
+local SpectateToggle = SpectateTab:CreateToggle({
+    Name = "Spectate Player",
+    Content = "Toggle spectating",
+    CurrentValue = false,
+    Flag = "spectate_toggle",
+    Callback = function(v)
+        if v then
+            if not targetPlayer then
+                if #playerList>0 then
+                    targetPlayer = Players:FindFirstChild(playerList[1])
+                else
+                    RayfieldLibrary:Notify({Title="Error",Content="No players",Duration=3})
+                    SpectateToggle:Set(false)
+                    return
+                end
+            end
+            local success = StartSpectating(targetPlayer)
+            if not success then SpectateToggle:Set(false) end
+        else
+            StopSpectating()
+        end
+    end
+})
+
+-- ==================== ESP TAB ====================
+local ESPTab = Window:CreateTab("ESP", nil)
+local function CreateLine(from, to, color)
+    local s, l = pcall(function()
+        local line = Drawing.new("Line")
+        line.From = from
+        line.To = to
+        line.Color = color
+        line.Thickness = 2
+        line.Visible = false
+        return line
+    end)
+    return s and l or nil
+end
+local function CreateBox(pos, size, color)
+    local s, b = pcall(function()
+        local box = Drawing.new("Square")
+        box.Position = pos
+        box.Size = size
+        box.Color = color
+        box.Thickness = 2
+        box.Filled = false
+        box.Visible = false
+        return box
+    end)
+    return s and b or nil
+end
+local function ClearESP()
+    for _, objs in pairs(espObjects) do
+        if objs.line then objs.line:Remove() end
+        if objs.box then objs.box:Remove() end
+    end
+    espObjects = {}
+    for _, c in ipairs(espConnections) do
+        c:Disconnect()
+    end
+    espConnections = {}
+end
+local function UpdateESPColor()
+    for _, objs in pairs(espObjects) do
+        if objs.line then objs.line.Color = espColor end
+        if objs.box then objs.box.Color = espColor end
+    end
+end
+local function SetupESP()
+    ClearESP()
+    local function CreateForPlayer(p)
+        if p == LocalPlayer then return end
+        local objs = {}
+        if espType == "Line + Box" or espType == "Line Only" then
+            local line = CreateLine(Vector2.new(0,0), Vector2.new(0,0), espColor)
+            if line then objs.line = line end
+        end
+        if espType == "Line + Box" or espType == "Box Only" then
+            local box = CreateBox(Vector2.new(0,0), Vector2.new(0,0), espColor)
+            if box then objs.box = box end
+        end
+        if next(objs) then
+            espObjects[p] = objs
+        end
+    end
+    for _, p in ipairs(Players:GetPlayers()) do
+        CreateForPlayer(p)
+    end
+    local added = Players.PlayerAdded:Connect(function(p)
+        task.wait(0.5)
+        CreateForPlayer(p)
+    end)
+    table.insert(espConnections, added)
+    local removed = Players.PlayerRemoving:Connect(function(p)
+        if espObjects[p] then
+            if espObjects[p].line then espObjects[p].line:Remove() end
+            if espObjects[p].box then espObjects[p].box:Remove() end
+            espObjects[p] = nil
+        end
+    end)
+    table.insert(espConnections, removed)
+    local update = RunService.RenderStepped:Connect(function()
+        if not espEnabled then return end
+        local char = LocalPlayer.Character
+        if not char then return end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+        local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+        for p, objs in pairs(espObjects) do
+            pcall(function()
+                if p and p.Character then
+                    local pr = p.Character:FindFirstChild("HumanoidRootPart")
+                    if pr then
+                        local pos, onScreen = Camera:WorldToViewportPoint(pr.Position)
+                        if onScreen then
+                            local vpos = Vector2.new(pos.X, pos.Y)
+                            if objs.line then
+                                objs.line.From = center
+                                objs.line.To = vpos
+                                objs.line.Visible = true
+                            end
+                            if objs.box then
+                                local dist = (Camera.CFrame.Position - pr.Position).Magnitude
+                                local size = math.clamp(1000/dist, 30, 150)
+                                objs.box.Position = vpos - Vector2.new(size/2, size/2)
+                                objs.box.Size = Vector2.new(size, size)
+                                objs.box.Visible = true
+                            end
+                        else
+                            if objs.line then objs.line.Visible = false end
+                            if objs.box then objs.box.Visible = false end
+                        end
+                    else
+                        if objs.line then objs.line.Visible = false end
+                        if objs.box then objs.box.Visible = false end
+                    end
+                else
+                    if objs.line then objs.line.Visible = false end
+                    if objs.box then objs.box.Visible = false end
+                end
+            end)
+        end
+    end)
+    table.insert(espConnections, update)
+end
+ESPTab:CreateSection("ESP Settings")
+local ESPTypeDropdown = ESPTab:CreateDropdown({
+    Name = "ESP Type",
+    Options = {"Line + Box","Box Only","Line Only"},
+    CurrentOption = "Line + Box",
+    MultipleOptions = false,
+    Flag = "esp_type",
+    Callback = function(opt)
+        if opt and type(opt)=="table" and #opt>0 then
+            espType = opt[1]
+            if espEnabled then
+                pcall(SetupESP)
+            end
+        end
+    end
+})
+local ESPColorPicker = ESPTab:CreateColorPicker({
+    Name = "ESP Color",
+    Color = Color3.fromRGB(255,0,0),
+    Flag = "esp_color",
+    Callback = function(c)
+        espColor = c
+        if espEnabled then
+            pcall(UpdateESPColor)
+        end
+    end
+})
+espEnabled = false
+ClearESP()
+local ESPToggle = ESPTab:CreateToggle({
+    Name = "Enable ESP",
+    Content = "Toggle ESP on/off",
+    CurrentValue = false,
+    Flag = "esp_toggle",
+    Callback = function(v)
+        local s = pcall(function()
+            espEnabled = v
+            if v then
+                ClearESP()
+                SetupESP()
+                RayfieldLibrary:Notify({Title="ESP",Content="ESP Enabled",Duration=2})
+            else
+                ClearESP()
+                RayfieldLibrary:Notify({Title="ESP",Content="ESP Disabled",Duration=2})
+            end
+        end)
+        if not s then
+            espEnabled = false
+            ClearESP()
+            task.spawn(function() ESPToggle:Set(false) end)
+        end
+    end
+})
+
+-- ==================== TP TAB ====================
+local TPTab = Window:CreateTab("TP", nil)
+TPTab:CreateSection("📍 Teleport Locations")
+
+local stashPos = Vector3.new(430.67, 167.62, -400.17)
+
+TPTab:CreateButton({
+    Name = "Teleport to Stash",
+    Callback = function()
+        local char = LocalPlayer.Character
+        if char then
+            local rootPart = char:FindFirstChild("HumanoidRootPart")
+            if rootPart then
+                rootPart.CFrame = CFrame.new(stashPos)
+                RayfieldLibrary:Notify({Title="Teleport",Content="Teleported to stash location",Duration=2})
+            end
+        end
+    end
+})
+
+TPTab:CreateButton({
+    Name = "Teleport to Pookie",
+    Callback = function()
+        if TeleportToNPC() then
+            RayfieldLibrary:Notify({Title="Teleport",Content="Teleported to Pookie",Duration=2})
+        else
+            RayfieldLibrary:Notify({Title="Error",Content="Could not find Pookie",Duration=3})
+        end
+    end
+})
+
+-- ==================== GENERAL ====================
+mouse.Button1Down:Connect(function()
+    if not spectating then
+        ForceCursorVisible()
+    end
+end)
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.Escape then
+        if spectating then SpectateToggle:Set(false) end
+        if flyEnabled then FlyToggle:Set(false) end
+    end
+end)
+LocalPlayer.CharacterRemoving:Connect(function()
+    if spectating then StopSpectating() end
+    if espEnabled then ClearESP() end
+    if flyEnabled then FlyToggle:Set(false) end
+    if invisibleEnabled then InvisibleToggle:Set(false) end
+    if speedEnabled then
+        SpeedToggle:Set(false)
+        StopSpeedForce()
+    end
+end)
+
+pcall(function() RayfieldLibrary:LoadConfiguration() end)
+task.wait(1)
+ForceCursorVisible()
+
+print("=== FIGHT FOR NY SCRIPT LOADED ===")
+print("✅ All features loaded successfully")
+print("✅ Loading text: by Khaos")
+print("✅ Speed hack now uses frame‑by‑frame enforcement")
+print("=================================")
