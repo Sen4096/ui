@@ -6,6 +6,7 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local VirtualUser = game:GetService("VirtualUser")
 local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
 
 -- ============================
 -- Window Configuration
@@ -86,25 +87,23 @@ local function teleportTo(x, y, z)
 end
 
 -- ============================
--- Look At Position Function
+-- Move Camera to Look At Position
 -- ============================
-local function lookAtPosition(targetPos)
+local function lookAtWithCamera(targetPos)
+   if not Camera then return end
+   
    local char = LocalPlayer.Character
    if not char then return end
    
-   local root = char:FindFirstChild("HumanoidRootPart")
+   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
    if not root then return end
    
-   local head = char:FindFirstChild("Head")
-   if not head then return end
-   
+   -- Calculate direction to target
    local direction = (targetPos - root.Position).Unit
-   local lookCFrame = CFrame.lookAt(root.Position, targetPos)
    
-   root.CFrame = lookCFrame
-   if head then
-      head.CFrame = lookCFrame
-   end
+   -- Set camera CFrame to look at target from current camera position
+   local cameraPos = Camera.CFrame.Position
+   Camera.CFrame = CFrame.lookAt(cameraPos, targetPos)
 end
 
 -- ============================
@@ -149,14 +148,14 @@ local function getClosestPromptPosition()
 end
 
 -- ============================
--- Fire Proximity Prompt (with look)
+-- Fire Proximity Prompt (with camera look)
 -- ============================
 local function fireProximityPromptWithLook()
    local promptPos, prompt = getClosestPromptPosition()
    if not promptPos or not prompt then return false end
    
-   -- Look at the prompt
-   lookAtPosition(promptPos)
+   -- Move camera to look at the prompt
+   lookAtWithCamera(promptPos)
    task.wait(0.1)
    
    -- Fire the prompt
@@ -212,24 +211,36 @@ local function fireNearestPrompt()
 end
 
 -- ============================
--- Auto Equip Tool (pack, syrup, or candy)
+-- Auto Equip Tool (pack, syrup, or candy) - IMPROVED
 -- ============================
 local function autoEquipItem()
-   local backpack = LocalPlayer.Backpack
    local character = LocalPlayer.Character
+   local backpack = LocalPlayer.Backpack
+   
    if not character then return false end
    
+   -- First check what's currently equipped
+   local currentTool = character:FindFirstChildOfClass("Tool")
+   if currentTool then
+      local name = currentTool.Name:lower()
+      if name:find("pack$") or name:find("syrup$") or name:find("candy$") then
+         return true -- Already have correct item equipped
+      end
+   end
+   
+   -- Search for items in backpack first
    for _, tool in pairs(backpack:GetChildren()) do
       if tool:IsA("Tool") then
          local name = tool.Name:lower()
          if name:find("pack$") or name:find("syrup$") or name:find("candy$") then
             tool.Parent = character
-            task.wait(0.3)
+            task.wait(0.5)
             return true
          end
       end
    end
    
+   -- Search in character inventory
    for _, tool in pairs(character:GetChildren()) do
       if tool:IsA("Tool") then
          local name = tool.Name:lower()
@@ -246,18 +257,27 @@ end
 -- Auto Equip Dump Tool
 -- ============================
 local function autoEquipDumpTool()
-   local backpack = LocalPlayer.Backpack
    local character = LocalPlayer.Character
+   local backpack = LocalPlayer.Backpack
+   
    if not character then return false end
    
+   -- First check what's currently equipped
+   local currentTool = character:FindFirstChildOfClass("Tool")
+   if currentTool and currentTool.Name:lower():find("dump") then
+      return true -- Already have dump tool equipped
+   end
+   
+   -- Search for dump tool in backpack
    for _, tool in pairs(backpack:GetChildren()) do
       if tool:IsA("Tool") and tool.Name:lower():find("dump") then
          tool.Parent = character
-         task.wait(0.3)
+         task.wait(0.5)
          return true
       end
    end
    
+   -- Search in character inventory
    for _, tool in pairs(character:GetChildren()) do
       if tool:IsA("Tool") and tool.Name:lower():find("dump") then
          return true
@@ -351,19 +371,23 @@ local function getAllNPCPositions()
 end
 
 -- ============================
--- Auto Sell Packs Function (with look)
+-- Auto Sell Packs Function (with camera look and equip)
 -- ============================
 local isAutoSelling = false
 
 local function sellToNPC(npcName, npcPos)
-   autoEquipItem()
+   -- Equip pack/syrup/candy item FIRST
+   local equipped = autoEquipItem()
+   if not equipped then
+      return false
+   end
    task.wait(0.5)
    
    teleportTo(npcPos.X, npcPos.Y + 3, npcPos.Z)
    task.wait(0.5)
    
-   -- Look at the NPC and fire prompt
-   lookAtPosition(npcPos)
+   -- Move camera to look at the NPC
+   lookAtWithCamera(npcPos)
    task.wait(0.1)
    
    fireProximityPromptWithLook()
@@ -402,7 +426,7 @@ local function stopAutoSell()
 end
 
 -- ============================
--- Auto ATM Farm (with look)
+-- Auto ATM Farm (with camera look)
 -- ============================
 local isATMFarming = false
 
@@ -416,8 +440,8 @@ local function useATM()
    teleportTo(atmPos.X, atmPos.Y, atmPos.Z)
    task.wait(0.5)
    
-   -- Look at the ATM position
-   lookAtPosition(atmPos)
+   -- Move camera to look at the ATM
+   lookAtWithCamera(atmPos)
    task.wait(0.1)
    
    fireProximityPromptWithLook()
@@ -489,7 +513,8 @@ local function pickupDroppedTools()
                teleportTo(toolPos.X, toolPos.Y + 2, toolPos.Z)
                task.wait(0.3)
                
-               lookAtPosition(toolPos)
+               -- Move camera to look at the tool
+               lookAtWithCamera(toolPos)
                task.wait(0.1)
                
                local promptFound = false
