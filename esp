@@ -39,7 +39,7 @@ local flourTables = {
 }
 
 -- ============================
--- Box Farm Locations (FAST)
+-- Box Farm Locations
 -- ============================
 local boxLocations = {
    {name = "Van", coords = {142.6, 179.5, 191.6}},
@@ -80,7 +80,7 @@ local function teleportTo(x, y, z)
    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
    if not root then return false end
    root.CFrame = CFrame.new(x, y, z)
-   task.wait(0.05)
+   task.wait(0.1)
    return true
 end
 
@@ -111,7 +111,7 @@ local function fireNearestPrompt()
             
             if distance <= 5 then
                prompt:InputHoldBegin()
-               task.wait(0.05)
+               task.wait(0.1)
                prompt:InputHoldEnd()
                break
             end
@@ -121,24 +121,32 @@ local function fireNearestPrompt()
 end
 
 -- ============================
--- Auto Equip Tool with "dump" in name
+-- Auto Equip Tool (pack, syrup, or candy)
 -- ============================
-local function equipDumpTool()
+local function autoEquipItem()
    local backpack = LocalPlayer.Backpack
    local character = LocalPlayer.Character
    if not character then return false end
    
+   -- Check backpack first for items ending with pack, syrup, or candy
    for _, tool in pairs(backpack:GetChildren()) do
-      if tool:IsA("Tool") and tool.Name:lower():find("dump") then
-         tool.Parent = character
-         task.wait(0.2)
-         return true
+      if tool:IsA("Tool") then
+         local name = tool.Name:lower()
+         if name:find("pack$") or name:find("syrup$") or name:find("candy$") then
+            tool.Parent = character
+            task.wait(0.3)
+            return true
+         end
       end
    end
    
+   -- Check character inventory
    for _, tool in pairs(character:GetChildren()) do
-      if tool:IsA("Tool") and tool.Name:lower():find("dump") then
-         return true
+      if tool:IsA("Tool") then
+         local name = tool.Name:lower()
+         if name:find("pack$") or name:find("syrup$") or name:find("candy$") then
+            return true
+         end
       end
    end
    
@@ -197,14 +205,14 @@ local function sellToNPC(npcName)
       return false 
    end
    
-   equipDumpTool()
-   task.wait(0.3)
-   
-   teleportTo(npcPos.X, npcPos.Y + 3, npcPos.Z)
+   autoEquipItem()
    task.wait(0.5)
    
+   teleportTo(npcPos.X, npcPos.Y + 3, npcPos.Z)
+   task.wait(1)
+   
    fireNearestPrompt()
-   task.wait(0.3)
+   task.wait(0.5)
    
    return true
 end
@@ -222,7 +230,7 @@ local function startAutoSell()
          if danPos and (not lastDanPos or (danPos - lastDanPos).Magnitude > 1) then
             sellToNPC("Dan")
             lastNPCPositions["Dan"] = danPos
-            task.wait(1)
+            task.wait(2)
          end
          
          if not isAutoSelling then break end
@@ -234,10 +242,10 @@ local function startAutoSell()
          if pookiePos and (not lastPookiePos or (pookiePos - lastPookiePos).Magnitude > 1) then
             sellToNPC("Pookie")
             lastNPCPositions["Pookie"] = pookiePos
-            task.wait(1)
+            task.wait(2)
          end
          
-         task.wait(0.5)
+         task.wait(1)
       end
    end)
 end
@@ -252,16 +260,16 @@ end
 local isATMFarming = false
 
 local function useATM()
-   equipDumpTool()
-   task.wait(0.3)
+   autoEquipItem()
+   task.wait(0.5)
    
    -- Pick a random ATM
    local randomATM = atmLocations[math.random(1, #atmLocations)]
    teleportTo(randomATM.coords[1], randomATM.coords[2] + 3, randomATM.coords[3])
-   task.wait(0.5)
+   task.wait(1)
    
    fireNearestPrompt()
-   task.wait(0.3)
+   task.wait(0.5)
    
    return true
 end
@@ -280,7 +288,7 @@ local function startATMFarm()
             lastATMTime = tick()
          end
          
-         task.wait(1) -- Check every second
+         task.wait(1)
       end
    end)
 end
@@ -290,7 +298,7 @@ local function stopATMFarm()
 end
 
 -- ============================
--- Auto Pickup Dropped Tools
+-- Auto Pickup Dropped Tools (FIXED)
 -- ============================
 local isAutoPickup = false
 
@@ -302,26 +310,78 @@ local function pickupDroppedTools()
    if not root then return end
    
    local droppedTools = workspace:FindFirstChild("DroppedTools")
-   if not droppedTools then return end
+   if not droppedTools then 
+      return 
+   end
    
    for _, tool in pairs(droppedTools:GetChildren()) do
+      -- Check if it's a tool or has a handle
       if tool:IsA("Tool") or tool:FindFirstChild("Handle") then
-         local toolPos = tool:FindFirstChild("Handle") and tool.Handle.Position or tool.Position
-         local distance = (root.Position - toolPos).Magnitude
-         
-         if distance <= 15 then
-            teleportTo(toolPos.X, toolPos.Y + 2, toolPos.Z)
-            task.wait(0.2)
-            
-            for _, prompt in pairs(tool:GetDescendants()) do
-               if prompt:IsA("ProximityPrompt") then
-                  prompt:InputHoldBegin()
-                  task.wait(0.05)
-                  prompt:InputHoldEnd()
+         -- Get tool position
+         local toolPos = nil
+         if tool:IsA("Tool") and tool:FindFirstChild("Handle") then
+            toolPos = tool.Handle.Position
+         elseif tool:IsA("BasePart") then
+            toolPos = tool.Position
+         elseif tool:FindFirstChild("Handle") then
+            toolPos = tool.Handle.Position
+         else
+            -- Try to find any BasePart
+            for _, part in pairs(tool:GetDescendants()) do
+               if part:IsA("BasePart") then
+                  toolPos = part.Position
                   break
                end
             end
-            task.wait(0.1)
+         end
+         
+         if toolPos then
+            local distance = (root.Position - toolPos).Magnitude
+            if distance <= 15 then
+               -- Teleport to tool
+               teleportTo(toolPos.X, toolPos.Y + 2, toolPos.Z)
+               task.wait(0.3)
+               
+               -- Find and fire proximity prompt
+               local promptFound = false
+               for _, prompt in pairs(tool:GetDescendants()) do
+                  if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+                     prompt:InputHoldBegin()
+                     task.wait(0.1)
+                     prompt:InputHoldEnd()
+                     promptFound = true
+                     break
+                  end
+               end
+               
+               -- If no prompt found, try nearby prompts
+               if not promptFound then
+                  for _, prompt in pairs(workspace:GetDescendants()) do
+                     if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+                        local promptParent = prompt.Parent
+                        if promptParent then
+                           local promptPos = promptParent:FindFirstChild("Position")
+                           local promptPosition
+                           if promptPos then
+                              promptPosition = promptPos.Position
+                           elseif promptParent:IsA("BasePart") then
+                              promptPosition = promptParent.Position
+                           else
+                              promptPosition = promptParent.Position or Vector3.new()
+                           end
+                           local promptDistance = (toolPos - promptPosition).Magnitude
+                           if promptDistance <= 3 then
+                              prompt:InputHoldBegin()
+                              task.wait(0.1)
+                              prompt:InputHoldEnd()
+                              break
+                           end
+                        end
+                     end
+                  end
+               end
+               task.wait(0.2)
+            end
          end
       end
    end
@@ -334,7 +394,7 @@ local function startAutoPickup()
    task.spawn(function()
       while isAutoPickup do
          pickupDroppedTools()
-         task.wait(0.3)
+         task.wait(0.5)
       end
    end)
 end
@@ -344,7 +404,7 @@ local function stopAutoPickup()
 end
 
 -- ============================
--- Auto Flour Farm Function (FAST)
+-- Auto Flour Farm Function
 -- ============================
 local isFlourFarming = false
 
@@ -358,15 +418,15 @@ local function startFlourFarm()
             if not isFlourFarming then break end
             
             teleportTo(table.coords[1], table.coords[2], table.coords[3])
-            task.wait(0.5)
+            task.wait(1)
             
             for i = 1, 4 do
                if not isFlourFarming then break end
                fireNearestPrompt()
-               task.wait(0.15)
+               task.wait(0.3)
             end
             
-            task.wait(0.3)
+            task.wait(0.5)
          end
       end
    end)
@@ -377,7 +437,7 @@ local function stopFlourFarm()
 end
 
 -- ============================
--- Auto Box Farm Function (FAST)
+-- Auto Box Farm Function
 -- ============================
 local isBoxFarming = false
 
@@ -391,10 +451,10 @@ local function startBoxFarm()
             if not isBoxFarming then break end
             
             teleportTo(location.coords[1], location.coords[2], location.coords[3])
-            task.wait(0.3)
+            task.wait(2)
             
             fireNearestPrompt()
-            task.wait(0.15)
+            task.wait(0.5)
          end
       end
    end)
@@ -447,7 +507,7 @@ FarmsTab:CreateToggle({
 })
 
 FarmsTab:CreateToggle({
-   Name = "📦 Auto Farm Box (FAST)",
+   Name = "📦 Auto Farm Box",
    CurrentValue = false,
    Flag = "AutoBoxFarm",
    Callback = function(Value)
