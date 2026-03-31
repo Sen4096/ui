@@ -85,7 +85,18 @@ local function teleportTo(x, y, z)
 end
 
 -- ============================
--- Fire Nearest Proximity Prompt (within 5 studs)
+-- Fire Proximity Prompt (FORCED - holds and releases)
+-- ============================
+local function fireProximityPrompt(prompt)
+   if not prompt or not prompt:IsA("ProximityPrompt") then return end
+   prompt:InputHoldBegin()
+   task.wait(0.15)
+   prompt:InputHoldEnd()
+   task.wait(0.05)
+end
+
+-- ============================
+-- Fire Nearest Proximity Prompt (within range)
 -- ============================
 local function fireNearestPrompt()
    local char = LocalPlayer.Character
@@ -93,6 +104,9 @@ local function fireNearestPrompt()
    
    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
    if not root then return end
+   
+   local nearestPrompt = nil
+   local nearestDistance = math.huge
    
    for _, prompt in pairs(workspace:GetDescendants()) do
       if prompt:IsA("ProximityPrompt") and prompt.Enabled then
@@ -109,14 +123,16 @@ local function fireNearestPrompt()
             end
             local distance = (root.Position - promptPosition).Magnitude
             
-            if distance <= 5 then
-               prompt:InputHoldBegin()
-               task.wait(0.1)
-               prompt:InputHoldEnd()
-               break
+            if distance <= prompt.MaxActivationDistance and distance < nearestDistance then
+               nearestDistance = distance
+               nearestPrompt = prompt
             end
          end
       end
+   end
+   
+   if nearestPrompt then
+      fireProximityPrompt(nearestPrompt)
    end
 end
 
@@ -154,7 +170,7 @@ local function autoEquipItem()
 end
 
 -- ============================
--- Find NPC Position in PackSelling
+-- Find NPC Position in PackSelling (CONSTANT SEARCH)
 -- ============================
 local function findNPCPosition(npcName)
    local packSelling = workspace:FindFirstChild("PackSelling")
@@ -164,26 +180,31 @@ local function findNPCPosition(npcName)
    
    for _, child in pairs(packSelling:GetChildren()) do
       if child:IsA("Model") and (child.Name == npcName or string.find(child.Name, npcName)) then
+         -- Check for TeleportPart first
          local teleportPart = child:FindFirstChild("TeleportPart")
          if teleportPart and teleportPart:IsA("BasePart") then
             return teleportPart.Position
          end
          
+         -- Check for HumanoidRootPart
          local rootPart = child:FindFirstChild("HumanoidRootPart")
          if rootPart then
             return rootPart.Position
          end
          
+         -- Check for Head
          local head = child:FindFirstChild("Head")
          if head then
             return head.Position
          end
          
+         -- Check for Torso
          local torso = child:FindFirstChild("Torso")
          if torso then
             return torso.Position
          end
          
+         -- Find any BasePart
          for _, part in pairs(child:GetDescendants()) do
             if part:IsA("BasePart") then
                return part.Position
@@ -195,16 +216,53 @@ local function findNPCPosition(npcName)
 end
 
 -- ============================
--- Auto Sell Packs Function (Sells one pack per NPC when they move)
+-- Get All NPC Positions
+-- ============================
+local function getAllNPCPositions()
+   local npcs = {}
+   local packSelling = workspace:FindFirstChild("PackSelling")
+   if not packSelling then 
+      return npcs
+   end
+   
+   for _, child in pairs(packSelling:GetChildren()) do
+      if child:IsA("Model") and (child.Name == "Dan" or child.Name == "Pookie" or string.find(child.Name, "Dan") or string.find(child.Name, "Pookie")) then
+         local pos = nil
+         local teleportPart = child:FindFirstChild("TeleportPart")
+         if teleportPart and teleportPart:IsA("BasePart") then
+            pos = teleportPart.Position
+         else
+            local rootPart = child:FindFirstChild("HumanoidRootPart")
+            if rootPart then
+               pos = rootPart.Position
+            else
+               local head = child:FindFirstChild("Head")
+               if head then
+                  pos = head.Position
+               else
+                  for _, part in pairs(child:GetDescendants()) do
+                     if part:IsA("BasePart") then
+                        pos = part.Position
+                        break
+                     end
+                  end
+               end
+            end
+         end
+         if pos then
+            npcs[child.Name] = pos
+         end
+      end
+   end
+   return npcs
+end
+
+-- ============================
+-- Auto Sell Packs Function (CONSTANT SEARCHING)
 -- ============================
 local isAutoSelling = false
 
-local function sellToNPC(npcName)
-   local npcPos = findNPCPosition(npcName)
-   if not npcPos then 
-      return false 
-   end
-   
+local function sellToNPC(npcName, npcPos)
    autoEquipItem()
    task.wait(0.5)
    
@@ -223,29 +281,24 @@ local function startAutoSell()
    
    task.spawn(function()
       while isAutoSelling do
-         -- Check Dan
-         local danPos = findNPCPosition("Dan")
-         local lastDanPos = lastNPCPositions["Dan"]
+         -- Get all current NPC positions
+         local currentNPCPositions = getAllNPCPositions()
          
-         if danPos and (not lastDanPos or (danPos - lastDanPos).Magnitude > 1) then
-            sellToNPC("Dan")
-            lastNPCPositions["Dan"] = danPos
-            task.wait(2)
+         -- Check each NPC
+         for npcName, currentPos in pairs(currentNPCPositions) do
+            if not isAutoSelling then break end
+            
+            local lastPos = lastNPCPositions[npcName]
+            
+            -- If NPC moved to new location or first time seeing them
+            if not lastPos or (currentPos - lastPos).Magnitude > 1 then
+               sellToNPC(npcName, currentPos)
+               lastNPCPositions[npcName] = currentPos
+               task.wait(2)
+            end
          end
          
-         if not isAutoSelling then break end
-         
-         -- Check Pookie
-         local pookiePos = findNPCPosition("Pookie")
-         local lastPookiePos = lastNPCPositions["Pookie"]
-         
-         if pookiePos and (not lastPookiePos or (pookiePos - lastPookiePos).Magnitude > 1) then
-            sellToNPC("Pookie")
-            lastNPCPositions["Pookie"] = pookiePos
-            task.wait(2)
-         end
-         
-         task.wait(1)
+         task.wait(0.5) -- Check every 0.5 seconds for new NPC positions
       end
    end)
 end
@@ -255,12 +308,18 @@ local function stopAutoSell()
 end
 
 -- ============================
--- Auto ATM Farm (One card every 3 minutes)
+-- Auto ATM Farm (Only uses dump tool)
 -- ============================
 local isATMFarming = false
 
 local function useATM()
-   autoEquipItem()
+   -- Only equip dump tool for ATMs
+   for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
+      if tool:IsA("Tool") and tool.Name:lower():find("dump") then
+         tool.Parent = LocalPlayer.Character
+         break
+      end
+   end
    task.wait(0.5)
    
    -- Pick a random ATM
@@ -298,7 +357,7 @@ local function stopATMFarm()
 end
 
 -- ============================
--- Auto Pickup Dropped Tools (FIXED)
+-- Auto Pickup Dropped Tools
 -- ============================
 local isAutoPickup = false
 
@@ -315,9 +374,7 @@ local function pickupDroppedTools()
    end
    
    for _, tool in pairs(droppedTools:GetChildren()) do
-      -- Check if it's a tool or has a handle
       if tool:IsA("Tool") or tool:FindFirstChild("Handle") then
-         -- Get tool position
          local toolPos = nil
          if tool:IsA("Tool") and tool:FindFirstChild("Handle") then
             toolPos = tool.Handle.Position
@@ -326,7 +383,6 @@ local function pickupDroppedTools()
          elseif tool:FindFirstChild("Handle") then
             toolPos = tool.Handle.Position
          else
-            -- Try to find any BasePart
             for _, part in pairs(tool:GetDescendants()) do
                if part:IsA("BasePart") then
                   toolPos = part.Position
@@ -338,23 +394,18 @@ local function pickupDroppedTools()
          if toolPos then
             local distance = (root.Position - toolPos).Magnitude
             if distance <= 15 then
-               -- Teleport to tool
                teleportTo(toolPos.X, toolPos.Y + 2, toolPos.Z)
                task.wait(0.3)
                
-               -- Find and fire proximity prompt
                local promptFound = false
                for _, prompt in pairs(tool:GetDescendants()) do
                   if prompt:IsA("ProximityPrompt") and prompt.Enabled then
-                     prompt:InputHoldBegin()
-                     task.wait(0.1)
-                     prompt:InputHoldEnd()
+                     fireProximityPrompt(prompt)
                      promptFound = true
                      break
                   end
                end
                
-               -- If no prompt found, try nearby prompts
                if not promptFound then
                   for _, prompt in pairs(workspace:GetDescendants()) do
                      if prompt:IsA("ProximityPrompt") and prompt.Enabled then
@@ -371,9 +422,7 @@ local function pickupDroppedTools()
                            end
                            local promptDistance = (toolPos - promptPosition).Magnitude
                            if promptDistance <= 3 then
-                              prompt:InputHoldBegin()
-                              task.wait(0.1)
-                              prompt:InputHoldEnd()
+                              fireProximityPrompt(prompt)
                               break
                            end
                         end
