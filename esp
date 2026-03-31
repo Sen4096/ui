@@ -5,6 +5,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local VirtualUser = game:GetService("VirtualUser")
+local RunService = game:GetService("RunService")
 
 -- ============================
 -- Window Configuration
@@ -85,18 +86,90 @@ local function teleportTo(x, y, z)
 end
 
 -- ============================
--- Fire Proximity Prompt (FORCED - holds and releases)
+-- Look At Position Function
 -- ============================
-local function fireProximityPrompt(prompt)
-   if not prompt or not prompt:IsA("ProximityPrompt") then return end
+local function lookAtPosition(targetPos)
+   local char = LocalPlayer.Character
+   if not char then return end
+   
+   local root = char:FindFirstChild("HumanoidRootPart")
+   if not root then return end
+   
+   local head = char:FindFirstChild("Head")
+   if not head then return end
+   
+   local direction = (targetPos - root.Position).Unit
+   local lookCFrame = CFrame.lookAt(root.Position, targetPos)
+   
+   root.CFrame = lookCFrame
+   if head then
+      head.CFrame = lookCFrame
+   end
+end
+
+-- ============================
+-- Get Closest Prompt Position
+-- ============================
+local function getClosestPromptPosition()
+   local char = LocalPlayer.Character
+   if not char then return nil end
+   
+   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
+   if not root then return nil end
+   
+   local closestPrompt = nil
+   local closestDistance = math.huge
+   local closestPosition = nil
+   
+   for _, prompt in pairs(workspace:GetDescendants()) do
+      if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+         local promptParent = prompt.Parent
+         if promptParent then
+            local promptPos = promptParent:FindFirstChild("Position")
+            local promptPosition
+            if promptPos then
+               promptPosition = promptPos.Position
+            elseif promptParent:IsA("BasePart") then
+               promptPosition = promptParent.Position
+            else
+               promptPosition = promptParent.Position or Vector3.new()
+            end
+            local distance = (root.Position - promptPosition).Magnitude
+            
+            if distance <= prompt.MaxActivationDistance and distance < closestDistance then
+               closestDistance = distance
+               closestPrompt = prompt
+               closestPosition = promptPosition
+            end
+         end
+      end
+   end
+   
+   return closestPosition, closestPrompt
+end
+
+-- ============================
+-- Fire Proximity Prompt (with look)
+-- ============================
+local function fireProximityPromptWithLook()
+   local promptPos, prompt = getClosestPromptPosition()
+   if not promptPos or not prompt then return false end
+   
+   -- Look at the prompt
+   lookAtPosition(promptPos)
+   task.wait(0.1)
+   
+   -- Fire the prompt
    prompt:InputHoldBegin()
    task.wait(0.15)
    prompt:InputHoldEnd()
    task.wait(0.05)
+   
+   return true
 end
 
 -- ============================
--- Fire Nearest Proximity Prompt (within range)
+-- Fire Nearest Proximity Prompt (legacy)
 -- ============================
 local function fireNearestPrompt()
    local char = LocalPlayer.Character
@@ -132,7 +205,9 @@ local function fireNearestPrompt()
    end
    
    if nearestPrompt then
-      fireProximityPrompt(nearestPrompt)
+      nearestPrompt:InputHoldBegin()
+      task.wait(0.15)
+      nearestPrompt:InputHoldEnd()
    end
 end
 
@@ -144,7 +219,6 @@ local function autoEquipItem()
    local character = LocalPlayer.Character
    if not character then return false end
    
-   -- Check backpack first for items ending with pack, syrup, or candy
    for _, tool in pairs(backpack:GetChildren()) do
       if tool:IsA("Tool") then
          local name = tool.Name:lower()
@@ -156,7 +230,6 @@ local function autoEquipItem()
       end
    end
    
-   -- Check character inventory
    for _, tool in pairs(character:GetChildren()) do
       if tool:IsA("Tool") then
          local name = tool.Name:lower()
@@ -170,7 +243,32 @@ local function autoEquipItem()
 end
 
 -- ============================
--- Find NPC Position in PackSelling (CONSTANT SEARCH)
+-- Auto Equip Dump Tool
+-- ============================
+local function autoEquipDumpTool()
+   local backpack = LocalPlayer.Backpack
+   local character = LocalPlayer.Character
+   if not character then return false end
+   
+   for _, tool in pairs(backpack:GetChildren()) do
+      if tool:IsA("Tool") and tool.Name:lower():find("dump") then
+         tool.Parent = character
+         task.wait(0.3)
+         return true
+      end
+   end
+   
+   for _, tool in pairs(character:GetChildren()) do
+      if tool:IsA("Tool") and tool.Name:lower():find("dump") then
+         return true
+      end
+   end
+   
+   return false
+end
+
+-- ============================
+-- Find NPC Position in PackSelling
 -- ============================
 local function findNPCPosition(npcName)
    local packSelling = workspace:FindFirstChild("PackSelling")
@@ -180,31 +278,26 @@ local function findNPCPosition(npcName)
    
    for _, child in pairs(packSelling:GetChildren()) do
       if child:IsA("Model") and (child.Name == npcName or string.find(child.Name, npcName)) then
-         -- Check for TeleportPart first
          local teleportPart = child:FindFirstChild("TeleportPart")
          if teleportPart and teleportPart:IsA("BasePart") then
             return teleportPart.Position
          end
          
-         -- Check for HumanoidRootPart
          local rootPart = child:FindFirstChild("HumanoidRootPart")
          if rootPart then
             return rootPart.Position
          end
          
-         -- Check for Head
          local head = child:FindFirstChild("Head")
          if head then
             return head.Position
          end
          
-         -- Check for Torso
          local torso = child:FindFirstChild("Torso")
          if torso then
             return torso.Position
          end
          
-         -- Find any BasePart
          for _, part in pairs(child:GetDescendants()) do
             if part:IsA("BasePart") then
                return part.Position
@@ -258,7 +351,7 @@ local function getAllNPCPositions()
 end
 
 -- ============================
--- Auto Sell Packs Function (CONSTANT SEARCHING)
+-- Auto Sell Packs Function (with look)
 -- ============================
 local isAutoSelling = false
 
@@ -267,10 +360,14 @@ local function sellToNPC(npcName, npcPos)
    task.wait(0.5)
    
    teleportTo(npcPos.X, npcPos.Y + 3, npcPos.Z)
-   task.wait(1)
-   
-   fireNearestPrompt()
    task.wait(0.5)
+   
+   -- Look at the NPC and fire prompt
+   lookAtPosition(npcPos)
+   task.wait(0.1)
+   
+   fireProximityPromptWithLook()
+   task.wait(0.3)
    
    return true
 end
@@ -281,16 +378,13 @@ local function startAutoSell()
    
    task.spawn(function()
       while isAutoSelling do
-         -- Get all current NPC positions
          local currentNPCPositions = getAllNPCPositions()
          
-         -- Check each NPC
          for npcName, currentPos in pairs(currentNPCPositions) do
             if not isAutoSelling then break end
             
             local lastPos = lastNPCPositions[npcName]
             
-            -- If NPC moved to new location or first time seeing them
             if not lastPos or (currentPos - lastPos).Magnitude > 1 then
                sellToNPC(npcName, currentPos)
                lastNPCPositions[npcName] = currentPos
@@ -298,7 +392,7 @@ local function startAutoSell()
             end
          end
          
-         task.wait(0.5) -- Check every 0.5 seconds for new NPC positions
+         task.wait(0.5)
       end
    end)
 end
@@ -308,27 +402,26 @@ local function stopAutoSell()
 end
 
 -- ============================
--- Auto ATM Farm (Only uses dump tool)
+-- Auto ATM Farm (with look)
 -- ============================
 local isATMFarming = false
 
 local function useATM()
-   -- Only equip dump tool for ATMs
-   for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
-      if tool:IsA("Tool") and tool.Name:lower():find("dump") then
-         tool.Parent = LocalPlayer.Character
-         break
-      end
-   end
+   autoEquipDumpTool()
    task.wait(0.5)
    
-   -- Pick a random ATM
    local randomATM = atmLocations[math.random(1, #atmLocations)]
-   teleportTo(randomATM.coords[1], randomATM.coords[2] + 3, randomATM.coords[3])
-   task.wait(1)
+   local atmPos = Vector3.new(randomATM.coords[1], randomATM.coords[2] + 3, randomATM.coords[3])
    
-   fireNearestPrompt()
+   teleportTo(atmPos.X, atmPos.Y, atmPos.Z)
    task.wait(0.5)
+   
+   -- Look at the ATM position
+   lookAtPosition(atmPos)
+   task.wait(0.1)
+   
+   fireProximityPromptWithLook()
+   task.wait(0.3)
    
    return true
 end
@@ -341,7 +434,6 @@ local function startATMFarm()
       while isATMFarming do
          local currentTime = tick()
          
-         -- Check if 3 minutes have passed since last ATM use
          if currentTime - lastATMTime >= 180 then
             useATM()
             lastATMTime = tick()
@@ -397,10 +489,15 @@ local function pickupDroppedTools()
                teleportTo(toolPos.X, toolPos.Y + 2, toolPos.Z)
                task.wait(0.3)
                
+               lookAtPosition(toolPos)
+               task.wait(0.1)
+               
                local promptFound = false
                for _, prompt in pairs(tool:GetDescendants()) do
                   if prompt:IsA("ProximityPrompt") and prompt.Enabled then
-                     fireProximityPrompt(prompt)
+                     prompt:InputHoldBegin()
+                     task.wait(0.15)
+                     prompt:InputHoldEnd()
                      promptFound = true
                      break
                   end
@@ -422,7 +519,9 @@ local function pickupDroppedTools()
                            end
                            local promptDistance = (toolPos - promptPosition).Magnitude
                            if promptDistance <= 3 then
-                              fireProximityPrompt(prompt)
+                              prompt:InputHoldBegin()
+                              task.wait(0.15)
+                              prompt:InputHoldEnd()
                               break
                            end
                         end
