@@ -1,576 +1,784 @@
----@vars
-local runService = game:GetService('RunService')
-local coregui = game:GetService('CoreGui')
-local players = game:GetService('Players')
-local localPlayer = players.LocalPlayer
-local camera = workspace.CurrentCamera
+-- if it's ui related it's at the very top
+-- Chirax Menu
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
-local esp = {
-    -- settings
-    enabled = false,
-    teamcheck = true,
-    visiblecheck = false,
-    outlines = true,
-    limitdistance = false,
-    shortnames = false,
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local VirtualUser = game:GetService("VirtualUser")
 
-    maxchar = 4,
-    maxdistance = 1200,
-    fadefactor = 20,
-    arrowradius = 500,
-    arrowsize = 20,
-    arrowinfo = false,
+-- ============================
+-- Window Configuration
+-- ============================
+local Window = Rayfield:CreateWindow({
+   Name = "Chirax",
+   Icon = 0,
+   LoadingTitle = "Chirax Hub",
+   LoadingSubtitle = "by w9ec",
+   Theme = "Ocean",
+   ConfigurationSaving = { Enabled = false },
+   Discord = { Enabled = false },
+   KeySystem = false
+})
 
-    -- instances
-    --\ @teammates
-    team_chams = { false, Color3.new(1, 1, 1), Color3.new(1, 1, 1), .25, .75, true },
-    --
-    team_boxes = { false, Color3.new(), Color3.new(), 0.95 },
-    team_healthbar = { false, Color3.new(), Color3.new() },
-    team_kevlarbar = { false, Color3.new(), Color3.new() },
-    team_arrow = { false, Color3.new(), 0.5 },
-    --
-    team_names = { false, Color3.new()},
-    team_weapon = { false, Color3.new()},
-    team_distance = false,
-    team_health = false,
+-- ============================
+-- Tabs
+-- ============================
+local FarmsTab = Window:CreateTab("🌾 Farms", 0)
+local SellTab = Window:CreateTab("💰 Sell", 0)
+local MiscTab = Window:CreateTab("⚙️ Misc", 0)
+local TeleportTab = Window:CreateTab("📍 Teleport", 0)
+local DebugTab = Window:CreateTab("🔍 Debug", 0)
 
-    --\ @enemies
-    enemy_chams = { false, Color3.new(1, 1, 1), Color3.new(1, 1, 1), .25, .75, true },
-    --
-    enemy_boxes = { false, Color3.new(), Color3.new(), 0.95 },
-    enemy_healthbar = { false, Color3.new(), Color3.new() },
-    enemy_kevlarbar = { false, Color3.new(), Color3.new() },
-    enemy_arrow = { false, Color3.new(), 0.5 },
-    --
-    enemy_names = { false, Color3.new()},
-    enemy_weapon = { false, Color3.new()},
-    enemy_distance = false,
-    enemy_health = false,
-
-    --\ @priority
-    priority_chams = { false, Color3.new(1, 1, 1), Color3.new(1, 1, 1), .25, .75, true },
-    --
-    priority_boxes = { false, Color3.new(), Color3.new(), 0.95 },
-    priority_healthbar = { false, Color3.new(), Color3.new() },
-    priority_kevlarbar = { false, Color3.new(), Color3.new() },
-    priority_arrow = { false, Color3.new(), 0.5 },
-    --
-    priority_names = { false, Color3.new()},
-    priority_weapon = { false, Color3.new()},
-    priority_distance = false,
-    priority_health = false,
-
-    font = 'Plex',
-    textsize = 13,
-
-    -- tables
-    players = {},
-    priority_players = {},
-    connections = {},
-    visiblecheckparams = {}
+-- ============================
+-- Farm Tables Locations (Flour)
+-- ============================
+local flourTables = {
+   {name = "Table 1", coords = {429.3, 171.0, -400.4}},
+   {name = "Table 2", coords = {396.6, 182.2, -395.0}},
+   {name = "Table 3", coords = {431.0, 182.2, -399.5}},
+   {name = "Table 4", coords = {429.2, 178.6, -399.9}}
 }
 
--- index optimisations
-local NEWCF     = CFrame.new
-local NEWVEC2   = Vector2.new
-local NEWCOLOR3 = Color3.new
+-- ============================
+-- Box Farm Locations
+-- ============================
+local boxLocations = {
+   {name = "Van", coords = {142.6, 179.5, 191.6}},
+   {name = "Place", coords = {120.6, 178.5, 216.1}}
+}
 
-local MIN       = math.min
-local MAX       = math.max
-local ATAN2     = math.atan2
-local CLAMP     = math.clamp
-local FLOOR     = math.floor
-local SIN       = math.sin
-local COS       = math.cos
-local RAD       = math.rad
+-- ============================
+-- Variables for toggles
+-- ============================
+local noclipEnabled = false
+local instantPromptsEnabled = false
+local originalHoldDurations = {}
 
-local LEN       = string.len
-local LOWER     = string.lower
-local SUB       = string.sub
-
-local TINSERT   = table.insert
-local TFIND     = table.find
-
-
--- functions
-function esp:draw(a, b)
-    local instance = Drawing.new(a)
-    if type(b) == 'table' then
-        for property, value in next, b do
-            instance[property] = value
-        end
-    end
-    return instance
-end
-function esp:create(a, b)
-    local instance = Instance.new(a)
-    if type(b) == 'table' then
-        for property, value in next, b do
-            instance[property] = value
-        end
-    end
-    return instance
-end
-local folder = esp:create('Folder', { Parent = coregui })
-function esp:setproperties(a, b)
-    for i, v in next, b do
-        a[i] = v;
-    end
-    return a
-end
-function esp:raycast(a, b, c)
-    c = type(c) == 'table' and c or {}
-    local params = RaycastParams.new();
-    params.IgnoreWater = true;
-    params.FilterType = Enum.RaycastFilterType.Blacklist;
-    params.FilterDescendantsInstances = c;
-
-    local ray = workspace:Raycast(a, b, params);
-    if ray ~= nil then
-        if ray.Instance.Transparency >= .250 then
-            TINSERT(c, ray.Instance);
-            local newray = self:raycast(a,b,c)
-            if newray ~= nil then
-                ray = newray
-            end
-        end
-    end
-    return ray
+-- ============================
+-- Teleport Function
+-- ============================
+local function teleportTo(x, y, z)
+   local char = LocalPlayer.Character
+   if not char then return false end
+   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
+   if not root then return false end
+   root.CFrame = CFrame.new(x, y, z)
+   task.wait(0.1)
+   return true
 end
 
-function esp.getcharacter(plr)
-    return plr.Character
-end
-
-function esp.checkalive(plr)
-    if not plr then plr = localPlayer end
-    local pass = false
-    if (plr.Character and plr.Character:FindFirstChild('Humanoid') and plr.Character:FindFirstChild('Head') and plr.Character:FindFirstChild('LeftUpperArm') and plr.Character.Humanoid.Health > 0 and plr.Character.LeftUpperArm.Transparency == 0) then
-        pass = true
-    end
-    return pass
-end
-
-function esp.checkteam(plr, bool)
-    if not plr then plr = localPlayer end
-    return plr ~= localPlayer and bool or plr.Team ~= localPlayer.Team
-end
-
-function esp:checkvisible(instance, origin, params)
-    if not params then params = {} end
-    local hit = self:raycast(camera.CFrame.p, (origin.Position - camera.CFrame.p).unit * 500, { unpack(params), camera, localPlayer.Character })
-    return (hit and hit.Instance:IsDescendantOf(instance)) and true or false
-end
-
-function esp:check(plr)
-	if plr == players.LocalPlayer then return false; end;
-	local pass = true;
-	local character = self.getcharacter(plr);
-	if not self.checkalive(plr) then
-		pass = false;
-	elseif esp.limitdistance and (character.PrimaryPart.CFrame.p - workspace.CurrentCamera.CFrame.p).magnitude > esp.maxdistance then
-		pass = false;
-	elseif esp.teamcheck and not self.checkteam(plr, false) then
-		pass = false;
-    elseif esp.visiblecheck and not self:checkvisible(character, character.Head, esp.visiblecheckparams) then
-        pass = false
-	end;
-	return pass;
-end;
-
-function esp:returnoffsets(x, y, minY, z)
-    return {
-        NEWCF(x, y, z),
-        NEWCF(-x, y, z),
-        NEWCF(x, y, -z),
-        NEWCF(-x, y, -z),
-        NEWCF(x, -minY, z),
-        NEWCF(-x, -minY, z),
-        NEWCF(x, -minY, -z),
-        NEWCF(-x, -minY, -z)
-    };
-end;
-
-function esp:returntriangleoffsets(triangle)
-    local minX = MIN(triangle.PointA.X, triangle.PointB.X, triangle.PointC.X)
-    local minY = MIN(triangle.PointA.Y, triangle.PointB.Y, triangle.PointC.Y)
-    local maxX = MAX(triangle.PointA.X, triangle.PointB.X, triangle.PointC.X)
-    local maxY = MAX(triangle.PointA.Y, triangle.PointB.Y, triangle.PointC.Y)
-    return minX, minY, maxX, maxY
-end
-
-function esp:convertnumrange(val, oldmin, oldmax, newmin, newmax)
-    return (val - oldmin) * (newmax - newmin) / (oldmax - oldmin) + newmin;
-end;
-
-function esp:fadeviadistance(data)
-    return data.limit and 1 - CLAMP(self:convertnumrange(FLOOR(((data.cframe.p - camera.CFrame.p)).magnitude), (data.maxdistance - data.factor), data.maxdistance, 0, 1), 0, 1) or 1;
-end;
-
-function esp:floorvector(vector)
-    return NEWVEC2(FLOOR(vector.X),FLOOR(vector.Y))
-end
-function esp:rotatevector2(v2, r)
-	local c = COS(r);
-	local s = SIN(r);
-	return NEWVEC2(c * v2.X - s * v2.Y, s * v2.X + c * v2.Y);
-end;
---
-function esp:add(plr)
-    if plr == localPlayer then return end
-    local objs = {
-        box_fill = esp:draw('Square', { Filled = true, Thickness = 1 }),
-        box_outline = esp:draw('Square', { Filled = false, Thickness = 1 }),
-        box = esp:draw('Square', { Filled = false, Thickness = 1, Color = NEWCOLOR3(1,1,1) }),
-        arrow_name_outline = esp:draw('Text', { Color = NEWCOLOR3(), Font = 2, Size = 13 }),
-        arrow_name = esp:draw('Text', { Color = NEWCOLOR3(1,1,1), Font = 2, Size = 13 }),
-        arrow_bar_outline = esp:draw('Square', { Filled = true, Thickness = 1 }),
-        arrow_bar_inline = esp:draw('Square', { Filled = true, Thickness = 1, Color = NEWCOLOR3(0.3, 0.3, 0.3) }),
-        arrow_bar = esp:draw('Square', { Filled = true, Thickness = 1, Color = NEWCOLOR3(1,1,1) }),
-        arrow_kevlarbar_outline = esp:draw('Square', { Filled = true, Thickness = 1 }),
-        arrow_kevlarbar_inline = esp:draw('Square', { Filled = true, Thickness = 1, Color = NEWCOLOR3(0.3, 0.3, 0.3) }),
-        arrow_kevlarbar = esp:draw('Square', { Filled = true, Thickness = 1, Color = NEWCOLOR3(1,1,1) }),
-        arrow = esp:draw('Triangle', { Filled = true, Thickness = 1, });
-        -- bars
-        bar_outline = esp:draw('Square', { Filled = true, Thickness = 1 }),
-        bar_inline = esp:draw('Square', { Filled = true, Thickness = 1, Color = NEWCOLOR3(0.3, 0.3, 0.3) }),
-        bar = esp:draw('Square', { Filled = true, Thickness = 1, Color = NEWCOLOR3(1,1,1) }),
-        kevlarbar_outline = esp:draw('Square', { Filled = true, Thickness = 1 }),
-        kevlarbar_inline = esp:draw('Square', { Filled = true, Thickness = 1, Color = NEWCOLOR3(0.3, 0.3, 0.3) }),
-        kevlarbar = esp:draw('Square', { Filled = true, Thickness = 1, Color = NEWCOLOR3(1,1,1) }),
-        -- text
-        name_outline = esp:draw('Text', { Color = NEWCOLOR3(), Font = 2, Size = 13 }),
-        name = esp:draw('Text', { Color = NEWCOLOR3(1,1,1), Font = 2, Size = 13 }),
-        distance_outline = esp:draw('Text', { Color = NEWCOLOR3(), Font = 2, Size = 13 }),
-        distance = esp:draw('Text', { Color = NEWCOLOR3(1,1,1), Font = 2, Size = 13 }),
-        weapon_outline = esp:draw('Text', { Color = NEWCOLOR3(), Font = 2, Size = 13 }),
-        weapon = esp:draw('Text', { Color = NEWCOLOR3(1,1,1), Font = 2, Size = 13 }),
-        health = esp:draw('Text', { Color = NEWCOLOR3(1,1,1), Font = 2, Size = 13, Center = true })
-    }
-    local chams = { ins = esp:create('Highlight', { Name = plr.Name }) }
-    function chams:Remove() chams.ins:Destroy() end
-    objs['chams'] = chams
-    self.players[plr.Name] = objs
-end
-function esp:disable(plr)
-    local objects = self.players[plr.Name];
-    if objects then
-        for i, v in next, objects do
-            if i == 'chams' then
-                v.ins.Enabled = false
+-- ============================
+-- Fire Nearest Proximity Prompt (within 5 studs)
+-- ============================
+local function fireNearestPrompt()
+   local char = LocalPlayer.Character
+   if not char then return end
+   
+   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
+   if not root then return end
+   
+   for _, prompt in pairs(workspace:GetDescendants()) do
+      if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+         local promptParent = prompt.Parent
+         if promptParent then
+            local promptPos = promptParent:FindFirstChild("Position")
+            local promptPosition
+            if promptPos then
+               promptPosition = promptPos.Position
+            elseif promptParent:IsA("BasePart") then
+               promptPosition = promptParent.Position
             else
-                v.Visible = false
+               promptPosition = promptParent.Position or Vector3.new()
             end
-        end;
-    end;
-end;
-function esp:remove(plr)
-    local objects = self.players[plr.Name];
-    if objects then
-        for i, v in next, objects do
-            v:Remove()
-        end;
-    end;
-    self.players[plr.Name] = nil;
-end;
--- connections
-function esp:connect(a, callback)
-    local c = a:Connect(callback)
-    TINSERT(self.connections, c)
-    return c
+            local distance = (root.Position - promptPosition).Magnitude
+            
+            if distance <= 5 then
+               prompt:InputHoldBegin()
+               task.wait(0.1)
+               prompt:InputHoldEnd()
+               break
+            end
+         end
+      end
+   end
 end
 
-function esp:bindtorenderstep(name, priority, callback)
-    local a = {}
-    function a:Disconnect()
-        runService:UnbindFromRenderStep(name)
-    end
-    runService:BindToRenderStep(name, priority, callback)
-    TINSERT(self.connections, a)
-    return a
+-- ============================
+-- Auto Equip Tool with "dump" in name
+-- ============================
+local function equipDumpTool()
+   local backpack = LocalPlayer.Backpack
+   local character = LocalPlayer.Character
+   if not character then return false end
+   
+   -- Check backpack first
+   for _, tool in pairs(backpack:GetChildren()) do
+      if tool:IsA("Tool") and tool.Name:lower():find("dump") then
+         tool.Parent = character
+         task.wait(0.3)
+         return true
+      end
+   end
+   
+   -- Check character inventory
+   for _, tool in pairs(character:GetChildren()) do
+      if tool:IsA("Tool") and tool.Name:lower():find("dump") then
+         return true
+      end
+   end
+   
+   return false
 end
 
-function esp:clearconnections()
-    for _, c in next, self.connections do
-        c:Disconnect()
-    end
+-- ============================
+-- Find NPC Position in PackSelling
+-- ============================
+local function findNPCPosition(npcName)
+   local packSelling = workspace:FindFirstChild("PackSelling")
+   if not packSelling then 
+      return nil 
+   end
+   
+   for _, child in pairs(packSelling:GetChildren()) do
+      if child:IsA("Model") and (child.Name == npcName or string.find(child.Name, npcName)) then
+         local rootPart = child:FindFirstChild("HumanoidRootPart")
+         local head = child:FindFirstChild("Head")
+         local torso = child:FindFirstChild("Torso")
+         
+         if rootPart then
+            return rootPart.Position
+         elseif head then
+            return head.Position
+         elseif torso then
+            return torso.Position
+         else
+            local primaryPart = child.PrimaryPart
+            if primaryPart then
+               return primaryPart.Position
+            else
+               local parts = {}
+               for _, part in pairs(child:GetDescendants()) do
+                  if part:IsA("BasePart") then
+                     table.insert(parts, part.Position)
+                  end
+               end
+               if #parts > 0 then
+                  local sum = Vector3.new(0,0,0)
+                  for _, pos in pairs(parts) do
+                     sum = sum + pos
+                  end
+                  return sum / #parts
+               end
+            end
+         end
+      end
+   end
+   return nil
 end
 
-function esp:update()
-    for plr, drawing in next, esp.players do
-        local player = players:FindFirstChild(plr)
-        if not player then esp.players[plr] = nil continue end
-        if esp.enabled and esp.checkalive(player) then
-            local character = esp.getcharacter(player)
-            local playerName = LEN(plr) > esp.maxchar and esp.shortnames and SUB(plr, 0, esp.maxchar) .. '..' or plr
-            local pass = esp:check(player)
-            local distance = tostring(FLOOR((character.PrimaryPart.CFrame.p - camera.CFrame.p).Magnitude  / 3))  .. 'm'
-            local _, onScreen = camera:WorldToViewportPoint(character['HumanoidRootPart'].Position)
-            local centerMassPos = character['HumanoidRootPart'].CFrame
-            local transparency = esp:fadeviadistance({
-                limit = esp.limitdistance,
-                cframe = centerMassPos,
-                maxdistance = esp.maxdistance,
-                factor = esp.fadefactor
-            })
-            local kevlar = 0
-            if player:FindFirstChild('Kevlar') then
-                kevlar = player.Kevlar.Value
-            end
-            local health = FLOOR(character.Humanoid.Health)
-
-            local flag = 'team_'
-            if esp.checkteam(player, false) then
-                flag = 'enemy_'
-            end
-
-            if TFIND(esp.priority_players, player) then
-                flag = 'priority_'
-            end
-
-            if not (pass and onScreen) then
-                esp:disable(player)
-            end
-
-            -- arrows
-            drawing.arrow.Visible = esp[ flag .. 'arrow'][1] and pass;
-            if drawing.arrow.Visible then
-                local proj = camera.CFrame:PointToObjectSpace(centerMassPos.p);
-                local ang = ATAN2(proj.Z, proj.X);
-                local dir = NEWVEC2(COS(ang), SIN(ang));
-                local a = (dir * esp.arrowradius * .5) + camera.ViewportSize / 2;
-                local b, c = a - esp:rotatevector2(dir, RAD(30)) * esp.arrowsize, a - esp:rotatevector2(dir, (-RAD(30))) * esp.arrowsize;
-                drawing.arrow.PointA = a;
-                drawing.arrow.PointB = b;
-                drawing.arrow.PointC = c;
-                drawing.arrow.Color = esp[ flag .. 'arrow'][2];
-                drawing.arrow.Transparency = not onScreen and esp[ flag .. 'arrow'][3] or 0;
-                if esp.arrowinfo then
-                    local smallestX, smallestY, biggestX, biggestY = esp:returntriangleoffsets(drawing.arrow)
-                    -- healthbar
-                    drawing.arrow_bar.Visible = not onScreen and drawing.arrow.Visible and esp[ flag .. 'healthbar'][1]
-                    drawing.arrow_bar_inline.Visible = drawing.arrow_bar.Visible
-                    drawing.arrow_bar_outline.Visible = esp.outlines and drawing.arrow_bar.Visible
-                    if drawing.arrow_bar.Visible then
-                        drawing.arrow_bar.Color = esp[ flag .. 'healthbar'][3]:Lerp(esp[ flag .. 'healthbar'][2], health / 100)
-                        drawing.arrow_bar.Size = esp:floorvector(NEWVEC2(1, ( - health / 100 * ( biggestY - smallestY + 2)) + 3))
-                        drawing.arrow_bar.Position = esp:floorvector(NEWVEC2(smallestX - 3, smallestY + drawing.arrow_bar_outline.Size.Y))
-                        drawing.arrow_bar.Transparency = transparency
-                        drawing.arrow_bar_inline.Size = esp:floorvector(NEWVEC2(1, ( - 1 * ( biggestY - smallestY + 2)) + 3))
-                        drawing.arrow_bar_inline.Position = drawing.arrow_bar.Position
-                        drawing.arrow_bar_inline.Transparency = transparency
-                        drawing.arrow_bar_outline.Size = esp:floorvector(NEWVEC2(1, biggestY - smallestY))
-                        drawing.arrow_bar_outline.Position = esp:floorvector(NEWVEC2(smallestX - 2, smallestY + 1))
-                        drawing.arrow_bar_outline.Transparency = transparency
-                    end
-
-                    -- kevlarbar
-                    drawing.arrow_kevlarbar.Visible = not onScreen and drawing.arrow.Visible and esp[ flag .. 'kevlarbar'][1]
-                    drawing.arrow_kevlarbar_inline.Visible = drawing.arrow_kevlarbar.Visible
-                    drawing.arrow_kevlarbar_outline.Visible = esp.outlines and drawing.arrow_kevlarbar.Visible
-                    if drawing.arrow_kevlarbar.Visible then
-                        drawing.arrow_kevlarbar.Color = esp[ flag .. 'kevlarbar'][3]:Lerp(esp[ flag .. 'kevlarbar'][2], kevlar / 100)
-                        drawing.arrow_kevlarbar.Size = esp:floorvector(NEWVEC2(( kevlar / 100 * ( biggestX - smallestX)), 1))
-                        drawing.arrow_kevlarbar.Position = esp:floorvector(NEWVEC2(smallestX, biggestY + 2))
-                        drawing.arrow_kevlarbar.Transparency = transparency
-                        drawing.arrow_kevlarbar_inline.Size = esp:floorvector(NEWVEC2((biggestX - smallestX), 1))
-                        drawing.arrow_kevlarbar_inline.Position = drawing.arrow_kevlarbar.Position
-                        drawing.arrow_kevlarbar_inline.Transparency = transparency
-                        drawing.arrow_kevlarbar_outline.Size = drawing.arrow_kevlarbar_inline.Size
-                        drawing.arrow_kevlarbar_outline.Position = esp:floorvector(NEWVEC2(smallestX + 1, biggestY + 3))
-                        drawing.arrow_kevlarbar_outline.Transparency = transparency
-                    end
-
-                    -- name
-                    drawing.arrow_name.Visible = not onScreen and drawing.arrow.Visible and esp[ flag .. 'names'][1]
-                    drawing.arrow_name_outline.Visible = esp.outlines and drawing.arrow_name.Visible
-                    if drawing.arrow_name.Visible then
-                        drawing.arrow_name.Text = esp[ flag .. 'distance'] and '['..distance..'] '.. playerName or playerName
-                        drawing.arrow_name.Font = Drawing.Fonts[esp.font]
-                        drawing.arrow_name.Size = esp.textsize
-                        drawing.arrow_name.Color = esp[ flag .. 'names'][2]
-                        drawing.arrow_name.Position = esp:floorvector(NEWVEC2(smallestX + (biggestX - smallestX) / 2 - (drawing.arrow_name.TextBounds.X / 2), smallestY - drawing.arrow_name.TextBounds.Y - 2))
-                        drawing.arrow_name.Transparency = transparency
-                        drawing.arrow_name_outline.Text = drawing.arrow_name.Text
-                        drawing.arrow_name_outline.Font = drawing.arrow_name.Font
-                        drawing.arrow_name_outline.Size = drawing.arrow_name.Size
-                        drawing.arrow_name_outline.Position = drawing.arrow_name.Position + NEWVEC2(1,1)
-                        drawing.arrow_name_outline.Transparency = transparency
-                    end
-                end
-            end;
-
-            -- chams
-            drawing.chams.ins.Enabled = esp[ flag .. 'chams'][1] and pass
-            drawing.chams.ins.Adornee = esp[ flag .. 'chams'][1] and player.Character or nil
-            drawing.chams.ins.Parent = folder
-            if drawing.chams.ins.Enabled then
-                drawing.chams.ins.FillColor = esp[ flag .. 'chams'][2]
-                drawing.chams.ins.OutlineColor = esp[ flag .. 'chams'][3]
-                drawing.chams.ins.FillTransparency = esp[ flag .. 'chams'][4]
-                drawing.chams.ins.OutlineTransparency = esp[ flag .. 'chams'][5]
-                drawing.chams.ins.DepthMode = esp[ flag .. 'chams'][6] and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
-            end;
-
-            if not pass or (not onScreen) then
-                continue
-            end
-
-            local smallestX, biggestX = math.huge, -math.huge
-            local smallestY, biggestY = math.huge, -math.huge
-
-            local y = (centerMassPos.p - character['Head'].Position).magnitude + character['Head'].Size.Y / 2
-            local x1 = (centerMassPos.p - character['RightHand'].Position).magnitude
-            local x2 = (centerMassPos.p - character['LeftHand'].Position).magnitude
-            local minY1 = (centerMassPos.p - character['RightFoot'].Position).magnitude
-            local minY2 = (centerMassPos.p - character['LeftFoot'].Position).magnitude
-
-            local minY = minY1 > minY2 and minY1 or minY2
-            local minX = x1 < x2 and x1 or x2
-
-            local offsets = esp:returnoffsets(minX, y, minY, character['HumanoidRootPart'].Size.Z / 2)
-
-            for i, v in next, offsets do
-                local pos = camera:WorldToViewportPoint(centerMassPos * v.p)
-                if smallestX > pos.X then smallestX = pos.X end
-                if biggestX < pos.X then biggestX = pos.X end
-                if smallestY > pos.Y then smallestY = pos.Y end
-                if biggestY < pos.Y then biggestY = pos.Y end
-            end
-
-            -- box
-            drawing.box.Visible = esp[ flag .. 'boxes'][1]
-            drawing.box_fill.Visible = drawing.box.Visible
-            drawing.box_outline.Visible = esp.outlines and drawing.box.Visible
-            if drawing.box.Visible then
-                drawing.box.Color = esp[ flag .. 'boxes'][2]
-                drawing.box.Size = esp:floorvector(NEWVEC2(biggestX - smallestX, biggestY - smallestY))
-                drawing.box.Position = esp:floorvector(NEWVEC2(smallestX, smallestY))
-                drawing.box.Transparency = transparency
-                --
-                drawing.box_fill.Size = drawing.box.Size
-                drawing.box_fill.Position = drawing.box.Position
-                drawing.box_fill.Color = esp[ flag .. 'boxes'][3]
-                drawing.box_fill.Transparency = MIN(esp[ flag .. 'boxes'][4], transparency)
-                --
-                drawing.box_outline.Size = drawing.box.Size
-                drawing.box_outline.Position = drawing.box.Position + NEWVEC2(1,1)
-                drawing.box_outline.Transparency = transparency
-            end
-
-            -- healthbar
-            drawing.bar.Visible = esp[ flag .. 'healthbar'][1]
-            drawing.bar_inline.Visible = drawing.bar.Visible
-            drawing.bar_outline.Visible = esp.outlines and drawing.bar.Visible
-            if drawing.bar.Visible then
-                drawing.bar.Color = esp[ flag .. 'healthbar'][3]:Lerp(esp[ flag .. 'healthbar'][2], health / 100)
-                drawing.bar.Size = esp:floorvector(NEWVEC2(1, ( - health / 100 * ( biggestY - smallestY + 2)) + 3))
-                drawing.bar.Position = esp:floorvector(NEWVEC2(smallestX - 3, smallestY + drawing.bar_outline.Size.Y))
-                drawing.bar.Transparency = transparency
-                drawing.bar_inline.Size = esp:floorvector(NEWVEC2(1, ( - 1 * ( biggestY - smallestY + 2)) + 3))
-                drawing.bar_inline.Position = drawing.bar.Position
-                drawing.bar_inline.Transparency = transparency
-                drawing.bar_outline.Size = esp:floorvector(NEWVEC2(1, biggestY - smallestY))
-                drawing.bar_outline.Position = esp:floorvector(NEWVEC2(smallestX - 2, smallestY + 1))
-                drawing.bar_outline.Transparency = transparency
-            end
-
-            -- kevlarbar
-            drawing.kevlarbar.Visible = esp[ flag .. 'kevlarbar'][1]
-            drawing.kevlarbar_inline.Visible = drawing.kevlarbar.Visible
-            drawing.kevlarbar_outline.Visible = esp.outlines and drawing.kevlarbar.Visible
-            if drawing.kevlarbar.Visible then
-                drawing.kevlarbar.Color = esp[ flag .. 'kevlarbar'][3]:Lerp(esp[ flag .. 'kevlarbar'][2], kevlar / 100)
-                drawing.kevlarbar.Size = esp:floorvector(NEWVEC2(( kevlar / 100 * ( biggestX - smallestX)), 1))
-                drawing.kevlarbar.Position = esp:floorvector(NEWVEC2(smallestX, biggestY + 2))
-                drawing.kevlarbar.Transparency = transparency
-                drawing.kevlarbar_inline.Size = esp:floorvector(NEWVEC2(( 1 * ( biggestX - smallestX)), 1))
-                drawing.kevlarbar_inline.Position = drawing.kevlarbar.Position
-                drawing.kevlarbar_inline.Transparency = transparency
-                drawing.kevlarbar_outline.Size = esp:floorvector(NEWVEC2(biggestX - smallestX, 1))
-                drawing.kevlarbar_outline.Position = esp:floorvector(NEWVEC2(smallestX + 1, biggestY + 3))
-                drawing.kevlarbar_outline.Transparency = transparency
-            end
-
-            -- distance
-            drawing.distance.Visible = not esp[ flag .. 'names'][1] and esp[ flag .. 'distance']
-            drawing.distance_outline.Visible = esp.outlines and drawing.distance.Visible
-            if drawing.distance.Visible then
-                drawing.distance.Text = '['..distance..']'
-                drawing.distance.Font = Drawing.Fonts[esp.font]
-                drawing.distance.Size = esp.textsize
-                drawing.distance.Color = esp[ flag .. 'names'][2]
-                drawing.distance.Position = esp:floorvector(NEWVEC2(smallestX + (biggestX - smallestX) / 2 - (drawing.distance.TextBounds.X / 2), smallestY - drawing.distance.TextBounds.Y - 2))
-                drawing.distance.Transparency = transparency
-                drawing.distance_outline.Text = drawing.distance.Text
-                drawing.distance_outline.Font = drawing.distance.Font
-                drawing.distance_outline.Size = drawing.distance.Size
-                drawing.distance_outline.Position = drawing.distance.Position + NEWVEC2(1,1)
-                drawing.distance_outline.Transparency = transparency
-            end
-
-            -- name
-            drawing.name.Visible = esp[ flag .. 'names'][1]
-            drawing.name_outline.Visible = esp.outlines and drawing.name.Visible
-            if drawing.name.Visible then
-                drawing.name.Text = esp[ flag .. 'distance'] and '['..distance..'] '..playerName or playerName
-                drawing.name.Font = Drawing.Fonts[esp.font]
-                drawing.name.Size = esp.textsize
-                drawing.name.Color = esp[ flag .. 'names'][2]
-                drawing.name.Position = esp:floorvector(NEWVEC2(smallestX + (biggestX - smallestX) / 2 - (drawing.name.TextBounds.X / 2), smallestY - drawing.name.TextBounds.Y - 2))
-                drawing.name.Transparency = transparency
-                drawing.name_outline.Text = drawing.name.Text
-                drawing.name_outline.Font = drawing.name.Font
-                drawing.name_outline.Size = drawing.name.Size
-                drawing.name_outline.Position = drawing.name.Position + NEWVEC2(1,1)
-                drawing.name_outline.Transparency = transparency
-            end
-
-            -- health
-            drawing.health.Visible = health ~= 100 and health ~= 0  and esp[flag .. 'health']
-            if drawing.health.Visible then
-                drawing.health.Text = tostring(health)
-                drawing.health.Font = Drawing.Fonts[esp.font]
-                drawing.health.Size = esp.textsize
-                drawing.health.Outline = esp.outlines
-                drawing.health.Color = esp[ flag .. 'healthbar'][3]:Lerp(esp[ flag .. 'healthbar'][2], health / 100)
-                drawing.health.Position = esp:floorvector(NEWVEC2(smallestX - 3, drawing.bar.Position.Y + drawing.bar.Size.Y - drawing.health.TextBounds.Y + 5))
-                drawing.health.Transparency = transparency
-            end
-
-            -- weapon
-            drawing.weapon.Visible = esp[ flag .. 'weapon'][1]
-            drawing.weapon_outline.Visible = esp.outlines and drawing.weapon.Visible
-            if drawing.weapon.Visible then
-                drawing.weapon.Text = LOWER(character.EquippedTool.Value) or nil
-                drawing.weapon.Font = Drawing.Fonts[esp.font]
-                drawing.weapon.Size = esp.textsize
-                drawing.weapon.Color = esp[ flag .. 'weapon'][2]
-                drawing.weapon.Position = esp:floorvector(NEWVEC2(smallestX + (biggestX - smallestX) / 2 - (drawing.weapon.TextBounds.X / 2), biggestY + 4))
-                drawing.weapon.Transparency = transparency
-                drawing.weapon_outline.Text = drawing.weapon.Text
-                drawing.weapon_outline.Font = drawing.weapon.Font
-                drawing.weapon_outline.Size = drawing.weapon.Size
-                drawing.weapon_outline.Position = drawing.weapon.Position + NEWVEC2(1,1)
-                drawing.weapon_outline.Transparency = transparency
-            end
-        else
-            esp:disable(player)
-        end
-    end
+-- ============================
+-- Get ATMs
+-- ============================
+local function getATMs()
+   local atms = {}
+   local cardFraud = workspace:FindFirstChild("CardFraud")
+   if cardFraud then
+      local atmFolder = cardFraud:FindFirstChild("ATMs")
+      if atmFolder then
+         for _, atm in pairs(atmFolder:GetChildren()) do
+            atms[#atms + 1] = atm
+         end
+      end
+   end
+   return atms
 end
 
-for i, plr in next, players:GetPlayers() do
-    esp:add(plr)
+-- ============================
+-- Get ATM Position
+-- ============================
+local function getATMPosition(atm)
+   local rootPart = atm:FindFirstChild("HumanoidRootPart")
+   if rootPart then
+      return rootPart.Position
+   end
+   
+   local head = atm:FindFirstChild("Head")
+   if head then
+      return head.Position
+   end
+   
+   local handle = atm:FindFirstChild("Handle")
+   if handle then
+      return handle.Position
+   end
+   
+   for _, part in pairs(atm:GetDescendants()) do
+      if part:IsA("BasePart") then
+         return part.Position
+      end
+   end
+   
+   if atm.PrimaryPart then
+      return atm.PrimaryPart.Position
+   end
+   
+   return nil
 end
-esp:connect(players.PlayerAdded, function(plr)
-    esp:add(plr)
-end)
-esp:connect(players.PlayerRemoving, function(plr)
-    esp:remove(plr)
-end)
 
-esp:bindtorenderstep('esp', 999, esp.update)
+-- ============================
+-- Auto Sell Packs Function
+-- ============================
+local isAutoSelling = false
 
-return esp
+local function sellToNPC(npcName)
+   local npcPos = findNPCPosition(npcName)
+   if not npcPos then 
+      return false 
+   end
+   
+   equipDumpTool()
+   task.wait(0.5)
+   
+   teleportTo(npcPos.X, npcPos.Y + 3, npcPos.Z)
+   task.wait(1)
+   
+   fireNearestPrompt()
+   task.wait(0.5)
+   
+   return true
+end
+
+local function startAutoSell()
+   if isAutoSelling then return end
+   isAutoSelling = true
+   
+   task.spawn(function()
+      while isAutoSelling do
+         local danPos = findNPCPosition("Dan")
+         if danPos then
+            sellToNPC("Dan")
+         end
+         if not isAutoSelling then break end
+         task.wait(2)
+         
+         local pookiePos = findNPCPosition("Pookie")
+         if pookiePos then
+            sellToNPC("Pookie")
+         end
+         if not isAutoSelling then break end
+         task.wait(2)
+      end
+   end)
+end
+
+local function stopAutoSell()
+   isAutoSelling = false
+end
+
+-- ============================
+-- Auto ATM Farm
+-- ============================
+local isATMFarming = false
+
+local function useATM(atm)
+   local atmPos = getATMPosition(atm)
+   if not atmPos then
+      return false
+   end
+   
+   equipDumpTool()
+   task.wait(0.5)
+   
+   teleportTo(atmPos.X, atmPos.Y + 3, atmPos.Z)
+   task.wait(1)
+   
+   fireNearestPrompt()
+   task.wait(0.5)
+   
+   return true
+end
+
+local function startATMFarm()
+   if isATMFarming then return end
+   isATMFarming = true
+   
+   task.spawn(function()
+      while isATMFarming do
+         local atms = getATMs()
+         if #atms == 0 then
+            task.wait(1)
+         else
+            for _, atm in ipairs(atms) do
+               if not isATMFarming then break end
+               useATM(atm)
+               task.wait(1)
+            end
+         end
+         task.wait(0.5)
+      end
+   end)
+end
+
+local function stopATMFarm()
+   isATMFarming = false
+end
+
+-- ============================
+-- Auto Pickup Dropped Tools
+-- ============================
+local isAutoPickup = false
+
+local function pickupDroppedTools()
+   local char = LocalPlayer.Character
+   if not char then return end
+   
+   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
+   if not root then return end
+   
+   local droppedTools = workspace:FindFirstChild("DroppedTools")
+   if not droppedTools then return end
+   
+   for _, tool in pairs(droppedTools:GetChildren()) do
+      if tool:IsA("Tool") or tool:FindFirstChild("Handle") then
+         local toolPos = tool:FindFirstChild("Handle") and tool.Handle.Position or tool.Position
+         local distance = (root.Position - toolPos).Magnitude
+         
+         if distance <= 15 then
+            teleportTo(toolPos.X, toolPos.Y + 2, toolPos.Z)
+            task.wait(0.3)
+            
+            for _, prompt in pairs(tool:GetDescendants()) do
+               if prompt:IsA("ProximityPrompt") then
+                  prompt:InputHoldBegin()
+                  task.wait(0.1)
+                  prompt:InputHoldEnd()
+                  break
+               end
+            end
+            task.wait(0.2)
+         end
+      end
+   end
+end
+
+local function startAutoPickup()
+   if isAutoPickup then return end
+   isAutoPickup = true
+   
+   task.spawn(function()
+      while isAutoPickup do
+         pickupDroppedTools()
+         task.wait(0.5)
+      end
+   end)
+end
+
+local function stopAutoPickup()
+   isAutoPickup = false
+end
+
+-- ============================
+-- Auto Flour Farm Function
+-- ============================
+local isFlourFarming = false
+
+local function startFlourFarm()
+   if isFlourFarming then return end
+   isFlourFarming = true
+   
+   task.spawn(function()
+      while isFlourFarming do
+         for _, table in ipairs(flourTables) do
+            if not isFlourFarming then break end
+            
+            teleportTo(table.coords[1], table.coords[2], table.coords[3])
+            task.wait(1)
+            
+            for i = 1, 4 do
+               if not isFlourFarming then break end
+               fireNearestPrompt()
+               task.wait(0.3)
+            end
+            
+            task.wait(0.5)
+         end
+      end
+   end)
+end
+
+local function stopFlourFarm()
+   isFlourFarming = false
+end
+
+-- ============================
+-- Auto Box Farm Function
+-- ============================
+local isBoxFarming = false
+
+local function startBoxFarm()
+   if isBoxFarming then return end
+   isBoxFarming = true
+   
+   task.spawn(function()
+      while isBoxFarming do
+         for _, location in ipairs(boxLocations) do
+            if not isBoxFarming then break end
+            
+            teleportTo(location.coords[1], location.coords[2], location.coords[3])
+            task.wait(2)
+            
+            fireNearestPrompt()
+            task.wait(0.5)
+         end
+      end
+   end)
+end
+
+local function stopBoxFarm()
+   isBoxFarming = false
+end
+
+-- ============================
+-- Stats Boost Function
+-- ============================
+local function boostStats()
+   local playerName = LocalPlayer.Name
+   local playerData = game:GetService("ReplicatedStorage"):FindFirstChild("PlayerData")
+   
+   if playerData then
+      local playerStats = playerData:FindFirstChild(playerName)
+      if playerStats then
+         local statistics = playerStats:FindFirstChild("Statistics")
+         if statistics then
+            local luck = statistics:FindFirstChild("Luck")
+            local intelligence = statistics:FindFirstChild("Intelligence")
+            
+            if luck then
+               luck.Value = 999
+            end
+            if intelligence then
+               intelligence.Value = 999
+            end
+         end
+      end
+   end
+end
+
+-- ============================
+-- Farms Tab UI
+-- ============================
+FarmsTab:CreateToggle({
+   Name = "🔄 Auto Farm Flour",
+   CurrentValue = false,
+   Flag = "AutoFlourFarm",
+   Callback = function(Value)
+      if Value then
+         startFlourFarm()
+      else
+         stopFlourFarm()
+      end
+   end,
+})
+
+FarmsTab:CreateToggle({
+   Name = "📦 Auto Farm Box",
+   CurrentValue = false,
+   Flag = "AutoBoxFarm",
+   Callback = function(Value)
+      if Value then
+         startBoxFarm()
+      else
+         stopBoxFarm()
+      end
+   end,
+})
+
+-- ============================
+-- Sell Tab UI
+-- ============================
+SellTab:CreateSection("Auto Farms")
+
+SellTab:CreateToggle({
+   Name = "💰 Auto Sell Packs (Dan & Pookie)",
+   CurrentValue = false,
+   Flag = "AutoSell",
+   Callback = function(Value)
+      if Value then
+         startAutoSell()
+      else
+         stopAutoSell()
+      end
+   end,
+})
+
+SellTab:CreateToggle({
+   Name = "🏧 Auto Farm ATMs",
+   CurrentValue = false,
+   Flag = "AutoATM",
+   Callback = function(Value)
+      if Value then
+         startATMFarm()
+      else
+         stopATMFarm()
+      end
+   end,
+})
+
+SellTab:CreateSection("Teleport to NPCs")
+
+SellTab:CreateButton({
+   Name = "📍 Teleport to Dan",
+   Callback = function()
+      local danPos = findNPCPosition("Dan")
+      if danPos then
+         teleportTo(danPos.X, danPos.Y + 3, danPos.Z)
+      end
+   end,
+})
+
+SellTab:CreateButton({
+   Name = "📍 Teleport to Pookie",
+   Callback = function()
+      local pookiePos = findNPCPosition("Pookie")
+      if pookiePos then
+         teleportTo(pookiePos.X, pookiePos.Y + 3, pookiePos.Z)
+      end
+   end,
+})
+
+SellTab:CreateSection("Teleport to ATMs")
+
+SellTab:CreateButton({
+   Name = "📍 Teleport to ATM 1",
+   Callback = function()
+      local atms = getATMs()
+      if atms[1] then
+         local pos = getATMPosition(atms[1])
+         if pos then
+            teleportTo(pos.X, pos.Y + 3, pos.Z)
+         end
+      end
+   end,
+})
+
+SellTab:CreateButton({
+   Name = "📍 Teleport to ATM 2",
+   Callback = function()
+      local atms = getATMs()
+      if atms[2] then
+         local pos = getATMPosition(atms[2])
+         if pos then
+            teleportTo(pos.X, pos.Y + 3, pos.Z)
+         end
+      end
+   end,
+})
+
+-- ============================
+-- Misc Tab UI
+-- ============================
+MiscTab:CreateButton({
+   Name = "📊 Boost Intelligence & Luck to 999",
+   Callback = function()
+      boostStats()
+   end,
+})
+
+MiscTab:CreateToggle({
+   Name = "🔄 Auto Pickup Dropped Tools",
+   CurrentValue = false,
+   Flag = "AutoPickup",
+   Callback = function(Value)
+      if Value then
+         startAutoPickup()
+      else
+         stopAutoPickup()
+      end
+   end,
+})
+
+MiscTab:CreateToggle({
+   Name = "🕊️ Noclip",
+   CurrentValue = false,
+   Flag = "Noclip",
+   Callback = function(Value)
+      noclipEnabled = Value
+      
+      if Value then
+         task.spawn(function()
+            while noclipEnabled do
+               local char = LocalPlayer.Character
+               if char then
+                  for _, part in pairs(char:GetDescendants()) do
+                     if part:IsA("BasePart") then
+                        part.CanCollide = false
+                     end
+                  end
+               end
+               task.wait(0.1)
+            end
+         end)
+      else
+         local char = LocalPlayer.Character
+         if char then
+            for _, part in pairs(char:GetDescendants()) do
+               if part:IsA("BasePart") then
+                  part.CanCollide = true
+               end
+            end
+         end
+      end
+   end,
+})
+
+MiscTab:CreateToggle({
+   Name = "⚡ Instant Proximity Prompts",
+   CurrentValue = false,
+   Flag = "InstantPrompts",
+   Callback = function(Value)
+      instantPromptsEnabled = Value
+      
+      for _, prompt in pairs(workspace:GetDescendants()) do
+         if prompt:IsA("ProximityPrompt") then
+            if Value then
+               if not originalHoldDurations[prompt] then
+                  originalHoldDurations[prompt] = prompt.HoldDuration
+               end
+               prompt.HoldDuration = 0
+            else
+               if originalHoldDurations[prompt] then
+                  prompt.HoldDuration = originalHoldDurations[prompt]
+               end
+            end
+         end
+      end
+   end,
+})
+
+-- ============================
+-- Debug Tab UI
+-- ============================
+DebugTab:CreateSection("Get Coordinates")
+
+DebugTab:CreateButton({
+   Name = "📋 Copy Current Position",
+   Callback = function()
+      local char = LocalPlayer.Character
+      if char then
+         local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
+         if root then
+            local pos = root.Position
+            local coords = string.format("%.1f, %.1f, %.1f", pos.X, pos.Y, pos.Z)
+            setclipboard(coords)
+            print("Copied: " .. coords)
+         end
+      end
+   end,
+})
+
+DebugTab:CreateButton({
+   Name = "🔍 List All NPCs",
+   Callback = function()
+      local npcList = {}
+      local packSelling = workspace:FindFirstChild("PackSelling")
+      if packSelling then
+         for _, child in pairs(packSelling:GetChildren()) do
+            if child:IsA("Model") then
+               local pos = nil
+               local rootPart = child:FindFirstChild("HumanoidRootPart")
+               if rootPart then
+                  pos = rootPart.Position
+               else
+                  local head = child:FindFirstChild("Head")
+                  if head then
+                     pos = head.Position
+                  end
+               end
+               if pos then
+                  table.insert(npcList, child.Name .. ": " .. string.format("%.1f, %.1f, %.1f", pos.X, pos.Y, pos.Z))
+               end
+            end
+         end
+      end
+      print("NPCs found:")
+      for _, npc in pairs(npcList) do
+         print(npc)
+      end
+   end,
+})
+
+DebugTab:CreateButton({
+   Name = "🔍 List All ATMs",
+   Callback = function()
+      local atmList = {}
+      local cardFraud = workspace:FindFirstChild("CardFraud")
+      if cardFraud then
+         local atmFolder = cardFraud:FindFirstChild("ATMs")
+         if atmFolder then
+            for _, atm in pairs(atmFolder:GetChildren()) do
+               local pos = nil
+               local rootPart = atm:FindFirstChild("HumanoidRootPart")
+               if rootPart then
+                  pos = rootPart.Position
+               else
+                  local head = atm:FindFirstChild("Head")
+                  if head then
+                     pos = head.Position
+                  else
+                     for _, part in pairs(atm:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                           pos = part.Position
+                           break
+                        end
+                     end
+                  end
+               end
+               if pos then
+                  table.insert(atmList, atm.Name .. ": " .. string.format("%.1f, %.1f, %.1f", pos.X, pos.Y, pos.Z))
+               end
+            end
+         end
+      end
+      print("ATMs found:")
+      for _, atm in pairs(atmList) do
+         print(atm)
+      end
+   end,
+})
+
+-- ============================
+-- Teleport Locations with Emojis
+-- ============================
+local locations = {
+   {name = "🍗 BFC", coords = {631.2, 161.5, -113.7}},
+   {name = "🏦 Bank", coords = {-107.6, 180.1, 1114.1}},
+   {name = "🏬 Gun Store", coords = {-266.2, 169.4, 678.1}},
+   {name = "🏭 Warehouse/Skitz", coords = {-1291.0, 127.9, -206.5}},
+   {name = "🗽 Exclusive Dealer", coords = {133.1, 142.2, 1310.2}},
+   {name = "💎 Jewel Store", coords = {14.1, 161.2, -110.7}},
+   {name = "🧺 Laundry", coords = {370.0, 179.4, 509.3}},
+   {name = "🏠 Trap House", coords = {403.1, 171.1, -391.7}},
+   {name = "✂️ Barber Shop", coords = {-663.2, 180.0, 612.2}},
+   {name = "📦 Box Job", coords = {129.8, 180.1, 217.4}},
+   {name = "👕 Clothing", coords = {219.6, 180.1, 919.8}},
+   {name = "🚘 Dealership", coords = {-596.6, 180.1, 1050.3}},
+   {name = "💳 Cards / Fraud", coords = {-241.0, 168.2, -118.1}},
+   {name = "🍓 Berry Grow", coords = {22.3, 179.5, 841.2}},
+   {name = "🧪 Lab", coords = {287.8, 180.0, 1272.7}},
+   {name = "🎨 Car Personalitzon", coords = {-618.2, 180.1, 1090.9}},
+   {name = "🏢 Penthouse", coords = {-259.8, 278.8, 1132.8}},
+   {name = "🎨 Tattoo", coords = {210.7, 160.5, -351.0}}
+}
+
+-- ============================
+-- Create Teleport Buttons
+-- ============================
+for _, loc in ipairs(locations) do
+   TeleportTab:CreateButton({
+      Name = loc.name,
+      Callback = function()
+         local x, y, z = loc.coords[1], loc.coords[2], loc.coords[3]
+         teleportTo(x, y, z)
+      end,
+   })
+end
