@@ -64,7 +64,7 @@ local lastATMTime = 0
 local instantPromptRunning = false
 local originalHoldDurations = {}
 
--- Debug console prints
+-- Debug prints
 local function debugPrint(msg)
    print("[Chirax] " .. msg)
 end
@@ -79,7 +79,32 @@ local function teleportTo(x, y, z)
    return true
 end
 
--- Get all prompts with their positions
+-- Enhanced function to get prompt position
+local function getPromptPosition(prompt)
+   -- Try to get position from parent if it's a BasePart
+   local parent = prompt.Parent
+   if parent:IsA("BasePart") then
+      return parent.Position
+   end
+   -- Check for a child named "Position"
+   local posPart = parent:FindFirstChild("Position")
+   if posPart and posPart:IsA("BasePart") then
+      return posPart.Position
+   end
+   -- Fallback: search for any BasePart in the parent
+   for _, child in pairs(parent:GetChildren()) do
+      if child:IsA("BasePart") then
+         return child.Position
+      end
+   end
+   -- Last resort: use the prompt's own position (if it has one)
+   if prompt:IsA("BasePart") then
+      return prompt.Position
+   end
+   return nil
+end
+
+-- Get all prompts with their positions (improved)
 local function getAllPromptsInRange()
    local char = LocalPlayer.Character
    if not char then return {} end
@@ -88,22 +113,17 @@ local function getAllPromptsInRange()
    if not root then return {} end
    
    local prompts = {}
+   local promptCount = 0
    for _, prompt in pairs(workspace:GetDescendants()) do
       if prompt:IsA("ProximityPrompt") and prompt.Enabled then
-         local promptParent = prompt.Parent
-         if promptParent then
-            local promptPos = promptParent:FindFirstChild("Position")
-            local promptPosition
-            if promptPos then
-               promptPosition = promptPos.Position
-            elseif promptParent:IsA("BasePart") then
-               promptPosition = promptParent.Position
-            else
-               promptPosition = promptParent.Position or Vector3.new()
-            end
-            local distance = (root.Position - promptPosition).Magnitude
+         promptCount = promptCount + 1
+         local promptPos = getPromptPosition(prompt)
+         if promptPos then
+            local distance = (root.Position - promptPos).Magnitude
             if distance <= 20 then
-               table.insert(prompts, {prompt = prompt, position = promptPosition, distance = distance, name = promptParent.Name})
+               table.insert(prompts, {prompt = prompt, position = promptPos, distance = distance, name = prompt.Parent.Name})
+               -- Debug: print prompt found
+               -- debugPrint("Found prompt: " .. prompt.Parent:GetFullName() .. " at distance " .. distance)
             end
          end
       end
@@ -112,7 +132,7 @@ local function getAllPromptsInRange()
    return prompts
 end
 
--- Fire the closest prompt
+-- Fire the closest prompt (forceful)
 local function fireClosestPrompt()
    local prompts = getAllPromptsInRange()
    if #prompts == 0 then 
@@ -123,17 +143,31 @@ local function fireClosestPrompt()
    local closest = prompts[1]
    debugPrint("Firing prompt: " .. (closest.name or "unknown") .. " at distance: " .. closest.distance)
    closest.prompt:InputHoldBegin()
-   task.wait(0.15)
+   task.wait(0.2)
    closest.prompt:InputHoldEnd()
    return true
 end
 
--- Fire the closest prompt multiple times
+-- Fire multiple times
 local function fireClosestPromptMultiple(times)
    for i = 1, times do
       fireClosestPrompt()
       task.wait(0.2)
    end
+end
+
+-- List all prompts in workspace (debug)
+local function listAllPrompts()
+   debugPrint("=== Listing all ProximityPrompts in workspace ===")
+   local count = 0
+   for _, prompt in pairs(workspace:GetDescendants()) do
+      if prompt:IsA("ProximityPrompt") then
+         count = count + 1
+         local pos = getPromptPosition(prompt)
+         debugPrint(count .. ": " .. prompt.Parent:GetFullName() .. " | Position: " .. tostring(pos) .. " | Enabled: " .. tostring(prompt.Enabled))
+      end
+   end
+   debugPrint("Total prompts found: " .. count)
 end
 
 -- Auto equip packs in order: Red, Purple, Green, White
@@ -240,13 +274,12 @@ local function autoEquipDumpTool()
    return false
 end
 
--- INSTANT PROXIMITY PROMPT - Optimized version with less lag
+-- INSTANT PROXIMITY PROMPT
 local function startInstantPrompt()
    if instantPromptRunning then return end
    instantPromptRunning = true
    debugPrint("Instant Proximity Prompts ENABLED")
    
-   -- Make all existing prompts instant
    for _, prompt in pairs(workspace:GetDescendants()) do
       if prompt:IsA("ProximityPrompt") then
          if not originalHoldDurations[prompt] then
@@ -256,7 +289,6 @@ local function startInstantPrompt()
       end
    end
    
-   -- Auto scan for new prompts (every 1 second to reduce lag)
    task.spawn(function()
       while instantPromptRunning do
          for _, prompt in pairs(workspace:GetDescendants()) do
@@ -496,6 +528,7 @@ local function boostStats()
    end
 end
 
+-- UI Elements
 FarmsTab:CreateToggle({
    Name = "🔄 Auto Farm Flour",
    CurrentValue = false,
@@ -537,6 +570,11 @@ SellTab:CreateToggle({
 MiscTab:CreateButton({
    Name = "📊 Boost Intelligence & Luck to 999",
    Callback = function() boostStats() end,
+})
+
+MiscTab:CreateButton({
+   Name = "🔍 List All Proximity Prompts",
+   Callback = function() listAllPrompts() end,
 })
 
 MiscTab:CreateToggle({
@@ -620,4 +658,4 @@ for _, loc in ipairs(locations) do
    })
 end
 
-debugPrint("Script loaded! Open F9 console to see debug messages.")
+debugPrint("Script loaded! Use the 'List All Proximity Prompts' button to see what's around you.")
