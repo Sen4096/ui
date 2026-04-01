@@ -1,4 +1,4 @@
--- Chirax │ Fight For New York V.1
+-- Chirax │ Fight For New York V.3
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Players = game:GetService("Players")
@@ -7,9 +7,9 @@ local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 
 local Window = Rayfield:CreateWindow({
-   Name = "Chirax │ Fight For New York V.1",
+   Name = "Chirax │ Fight For New York V.3",
    Icon = "bug-play",
-   LoadingTitle = "Chirax │ Fight For New York V.1",
+   LoadingTitle = "Chirax │ Fight For New York V.3",
    LoadingSubtitle = "by w9ec",
    Theme = "Amethyst",
    ConfigurationSaving = { Enabled = false },
