@@ -6,9 +6,9 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
 local Window = Rayfield:CreateWindow({
-   Name = "Chirax │ Fight For New York V.2",
+   Name = "Chirax │ Fight For New York V.1",
    Icon = "bug-play",
-   LoadingTitle = "Chirax │ Fight For New York V.2",
+   LoadingTitle = "Chirax │ Fight For New York V.1",
    LoadingSubtitle = "by w9ec",
    Theme = "Amethyst",
    ConfigurationSaving = { Enabled = false },
@@ -63,7 +63,6 @@ local instantPromptsEnabled = false
 local originalHoldDurations = {}
 local lastNPCLocation = {}
 local lastATMTime = 0
-local cameraLooked = false
 
 local function teleportTo(x, y, z)
    local char = LocalPlayer.Character
@@ -73,17 +72,6 @@ local function teleportTo(x, y, z)
    root.CFrame = CFrame.new(x, y, z)
    task.wait(0.1)
    return true
-end
-
--- Only look at camera once when needed
-local function lookAtWithCamera(targetPos)
-   if not Camera or not targetPos or cameraLooked then return end
-   Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetPos)
-   cameraLooked = true
-end
-
-local function resetCameraLook()
-   cameraLooked = false
 end
 
 -- Get all prompts with their positions
@@ -119,7 +107,7 @@ local function getAllPromptsInRange()
    return prompts
 end
 
--- INSTANT fire the closest prompt (no camera look)
+-- INSTANT fire the closest prompt
 local function fireClosestPrompt()
    local prompts = getAllPromptsInRange()
    if #prompts == 0 then return false end
@@ -139,21 +127,21 @@ local function fireClosestPromptMultiple(times)
    end
 end
 
--- Auto-scan for proximity prompts (every 0.5 seconds)
-local autoScanRunning = false
-local function startAutoScan()
-   if autoScanRunning then return end
-   autoScanRunning = true
+-- INSTANT PROXIMITY PROMPT SCANNER - Runs every tick (0 seconds)
+local instantScannerRunning = false
+local function startInstantScanner()
+   if instantScannerRunning then return end
+   instantScannerRunning = true
    task.spawn(function()
-      while autoScanRunning do
+      while instantScannerRunning do
          fireClosestPrompt()
-         task.wait(0.5)
+         task.wait() -- Runs every frame (0 seconds)
       end
    end)
 end
 
-local function stopAutoScan()
-   autoScanRunning = false
+local function stopInstantScanner()
+   instantScannerRunning = false
 end
 
 local validItems = {
@@ -217,10 +205,8 @@ local function findNPCLocation(npcName)
    local packSelling = workspace:FindFirstChild("PackSelling")
    if not packSelling then return nil, nil end
    
-   -- Search through all descendants for the NPC's ProximityPrompt
    for _, prompt in pairs(packSelling:GetDescendants()) do
       if prompt:IsA("ProximityPrompt") then
-         -- Traverse up to find the NPC model
          local current = prompt.Parent
          local npcModel = nil
          while current and current ~= packSelling do
@@ -232,7 +218,6 @@ local function findNPCLocation(npcName)
          end
          
          if npcModel then
-            -- Find the location folder
             local locationCurrent = npcModel.Parent
             local locationName = nil
             while locationCurrent and locationCurrent ~= packSelling do
@@ -240,19 +225,14 @@ local function findNPCLocation(npcName)
                locationCurrent = locationCurrent.Parent
             end
             
-            -- Get the position from the prompt or NPC
             local pos = nil
-            if prompt.Parent and prompt.Parent:IsA("BasePart") then
-               pos = prompt.Parent.Position
+            if locationName and packSellingLocations[locationName] then
+               local coords = packSellingLocations[locationName].coords
+               pos = Vector3.new(coords[1], coords[2], coords[3])
             elseif npcModel:FindFirstChild("HumanoidRootPart") then
                pos = npcModel.HumanoidRootPart.Position
             elseif npcModel:FindFirstChild("Head") then
                pos = npcModel.Head.Position
-            end
-            
-            if locationName and packSellingLocations[locationName] then
-               local coords = packSellingLocations[locationName].coords
-               pos = Vector3.new(coords[1], coords[2], coords[3])
             end
             
             if pos then
@@ -269,24 +249,15 @@ local isAutoSelling = false
 local function sellToNPC(npcName, locationName, targetPos)
    if not targetPos then return false end
    
-   -- Equip item
    if not autoEquipItem() then 
       return false 
    end
    task.wait(0.3)
    
-   -- Teleport to location
    teleportTo(targetPos.X, targetPos.Y + 3, targetPos.Z)
    task.wait(0.5)
    
-   -- Look at camera ONCE
-   lookAtWithCamera(targetPos)
-   
-   -- Fire the closest prompt multiple times (same as flour - 4 times)
    fireClosestPromptMultiple(4)
-   
-   -- Reset camera look for next teleport
-   resetCameraLook()
    
    return true
 end
@@ -296,7 +267,6 @@ local function startAutoSell()
    isAutoSelling = true
    task.spawn(function()
       while isAutoSelling do
-         -- Scan for Pookie
          local pookieLocation, pookiePos = findNPCLocation("Pookie")
          if pookiePos then
             local lastLoc = lastNPCLocation["Pookie"]
@@ -309,7 +279,6 @@ local function startAutoSell()
          
          if not isAutoSelling then break end
          
-         -- Scan for Dan
          local danLocation, danPos = findNPCLocation("Dan")
          if danPos then
             local lastLoc = lastNPCLocation["Dan"]
@@ -521,11 +490,11 @@ MiscTab:CreateToggle({
 })
 
 MiscTab:CreateToggle({
-   Name = "🔄 Auto Scan Proximity Prompts (Every 0.5s)",
+   Name = "⚡ Instant Prompt",
    CurrentValue = false,
-   Flag = "AutoScan",
+   Flag = "InstantScanner",
    Callback = function(Value)
-      if Value then startAutoScan() else stopAutoScan() end
+      if Value then startInstantScanner() else stopInstantScanner() end
    end,
 })
 
