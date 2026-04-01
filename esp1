@@ -87,7 +87,6 @@ local function getPromptPosition(prompt)
    if parent:IsA("BasePart") then
       return parent.Position
    end
-   -- fallback: search for any BasePart in the parent
    for _, child in pairs(parent:GetChildren()) do
       if child:IsA("BasePart") then
          return child.Position
@@ -96,7 +95,7 @@ local function getPromptPosition(prompt)
    return nil
 end
 
--- Get all prompts within range
+-- Get all prompts within range (increased to 50)
 local function getAllPromptsInRange()
    local char = LocalPlayer.Character
    if not char then return {} end
@@ -110,7 +109,7 @@ local function getAllPromptsInRange()
          local pos = getPromptPosition(prompt)
          if pos then
             local distance = (root.Position - pos).Magnitude
-            if distance <= 20 then
+            if distance <= 50 then -- Increased range to 50 studs
                table.insert(prompts, {prompt = prompt, position = pos, distance = distance, name = prompt.Parent.Name})
             end
          end
@@ -124,7 +123,7 @@ end
 local function fireClosestPrompt()
    local prompts = getAllPromptsInRange()
    if #prompts == 0 then 
-      debugPrint("No prompts in range")
+      debugPrint("No prompts in range (range=50)")
       return false 
    end
    
@@ -520,6 +519,14 @@ MiscTab:CreateButton({
    Callback = function() listAllPrompts() end,
 })
 
+MiscTab:CreateButton({
+   Name = "🔥 Test Fire Prompt at Current Location",
+   Callback = function()
+      debugPrint("Manually firing prompt...")
+      fireClosestPrompt()
+   end,
+})
+
 MiscTab:CreateToggle({
    Name = "🕊️ Noclip",
    CurrentValue = false,
@@ -602,4 +609,4 @@ for _, loc in ipairs(locations) do
    })
 end
 
-debugPrint("Script loaded! Press F9 to see console output.")
+debugPrint("Script loaded! Use the 'List All Proximity Prompts' button to see available prompts.")
