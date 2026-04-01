@@ -4,8 +4,6 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
-local VirtualUser = game:GetService("VirtualUser")
-local VirtualInput = game:GetService("VirtualInput")
 
 local Window = Rayfield:CreateWindow({
    Name = "Chirax │ Fight For New York V.1",
@@ -76,18 +74,6 @@ local function teleportTo(x, y, z)
    return true
 end
 
--- Emulate key press (E or Y)
-local function pressKey(key)
-   pcall(function()
-      VirtualInput:SendKeyEvent(key, true, game)
-      task.wait(0.05)
-      VirtualInput:SendKeyEvent(key, false, game)
-   end)
-   pcall(function()
-      VirtualUser:ClickButton1(Vector2.new(0, 0), 1)
-   end)
-end
-
 -- Get all prompts with their positions
 local function getAllPromptsInRange()
    local char = LocalPlayer.Character
@@ -121,17 +107,14 @@ local function getAllPromptsInRange()
    return prompts
 end
 
--- Fire the closest prompt using key press
+-- Fire the closest prompt
 local function fireClosestPrompt()
    local prompts = getAllPromptsInRange()
-   if #prompts == 0 then 
-      pressKey("e")
-      return false
-   end
+   if #prompts == 0 then return false end
    
    local closest = prompts[1]
    closest.prompt:InputHoldBegin()
-   task.wait(0.05)
+   task.wait(0.1)
    closest.prompt:InputHoldEnd()
    return true
 end
@@ -140,7 +123,7 @@ end
 local function fireClosestPromptMultiple(times)
    for i = 1, times do
       fireClosestPrompt()
-      task.wait(0.1)
+      task.wait(0.15)
    end
 end
 
@@ -275,39 +258,27 @@ local function findNPCLocation(npcName)
    local packSelling = workspace:FindFirstChild("PackSelling")
    if not packSelling then return nil, nil end
    
-   for _, prompt in pairs(packSelling:GetDescendants()) do
-      if prompt:IsA("ProximityPrompt") then
-         local current = prompt.Parent
-         local npcModel = nil
+   for _, descendant in pairs(packSelling:GetDescendants()) do
+      if descendant:IsA("Model") and (descendant.Name == npcName or string.lower(descendant.Name):find(string.lower(npcName))) then
+         local current = descendant.Parent
+         local locationName = nil
          while current and current ~= packSelling do
-            if current:IsA("Model") and (current.Name == npcName or string.lower(current.Name):find(string.lower(npcName))) then
-               npcModel = current
-               break
-            end
+            locationName = current.Name
             current = current.Parent
          end
          
-         if npcModel then
-            local locationCurrent = npcModel.Parent
-            local locationName = nil
-            while locationCurrent and locationCurrent ~= packSelling do
-               locationName = locationCurrent.Name
-               locationCurrent = locationCurrent.Parent
-            end
-            
-            local pos = nil
-            if locationName and packSellingLocations[locationName] then
-               local coords = packSellingLocations[locationName].coords
-               pos = Vector3.new(coords[1], coords[2], coords[3])
-            elseif npcModel:FindFirstChild("HumanoidRootPart") then
-               pos = npcModel.HumanoidRootPart.Position
-            elseif npcModel:FindFirstChild("Head") then
-               pos = npcModel.Head.Position
-            end
-            
-            if pos then
-               return locationName, pos
-            end
+         local pos = nil
+         if locationName and packSellingLocations[locationName] then
+            local coords = packSellingLocations[locationName].coords
+            pos = Vector3.new(coords[1], coords[2], coords[3])
+         elseif descendant:FindFirstChild("HumanoidRootPart") then
+            pos = descendant.HumanoidRootPart.Position
+         elseif descendant:FindFirstChild("Head") then
+            pos = descendant.Head.Position
+         end
+         
+         if pos then
+            return locationName, pos
          end
       end
    end
@@ -327,13 +298,7 @@ local function sellToNPC(npcName, locationName, targetPos)
    teleportTo(targetPos.X, targetPos.Y + 3, targetPos.Z)
    task.wait(0.5)
    
-   -- Emulate E and Y key presses multiple times
-   for i = 1, 4 do
-      pressKey("e")
-      pressKey("y")
-      task.wait(0.2)
-   end
-   
+   -- Fire prompt 4 times to ensure it works
    fireClosestPromptMultiple(4)
    
    return true
