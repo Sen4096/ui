@@ -1,5 +1,5 @@
 -- Chirax │ Fight For New York V.1
-loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -21,6 +21,7 @@ local SellTab = Window:CreateTab("💰 Sell", 0)
 local MiscTab = Window:CreateTab("⚙️ Misc", 0)
 local TeleportTab = Window:CreateTab("📍 Teleport", 0)
 
+-- ========== Location Data ==========
 local flourTables = {
    {name = "Table 1", coords = {429.3, 171.0, -400.4}},
    {name = "Table 2", coords = {396.6, 182.2, -395.0}},
@@ -58,11 +59,17 @@ local packSellingLocations = {
    ["warehouses"] = {coords = {-346.9, 175.9, 834.3}}
 }
 
+-- ========== Global Variables ==========
 local noclipEnabled = false
 local lastNPCLocation = {}
 local lastATMTime = 0
 local instantPromptRunning = false
 local originalHoldDurations = {}
+
+-- ========== Helper Functions ==========
+local function debugPrint(msg)
+   print("[Chirax] " .. msg)
+end
 
 local function teleportTo(x, y, z)
    local char = LocalPlayer.Character
@@ -74,6 +81,7 @@ local function teleportTo(x, y, z)
    return true
 end
 
+-- Get prompt position (works for Node structure)
 local function getPromptPosition(prompt)
    local parent = prompt.Parent
    if parent:IsA("BasePart") then
@@ -87,18 +95,21 @@ local function getPromptPosition(prompt)
    return nil
 end
 
+-- Get all prompts within range (increased to 50)
 local function getAllPromptsInRange()
    local char = LocalPlayer.Character
    if not char then return {} end
+   
    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
    if not root then return {} end
+   
    local prompts = {}
    for _, prompt in pairs(workspace:GetDescendants()) do
       if prompt:IsA("ProximityPrompt") and prompt.Enabled then
          local pos = getPromptPosition(prompt)
          if pos then
             local distance = (root.Position - pos).Magnitude
-            if distance <= 50 then
+            if distance <= 50 then -- Increased range to 50 studs
                table.insert(prompts, {prompt = prompt, position = pos, distance = distance, name = prompt.Parent.Name})
             end
          end
@@ -108,16 +119,23 @@ local function getAllPromptsInRange()
    return prompts
 end
 
+-- Fire the closest prompt
 local function fireClosestPrompt()
    local prompts = getAllPromptsInRange()
-   if #prompts == 0 then return false end
+   if #prompts == 0 then 
+      debugPrint("No prompts in range (range=50)")
+      return false 
+   end
+   
    local closest = prompts[1]
+   debugPrint("Firing prompt: " .. (closest.name or "unknown") .. " at distance: " .. closest.distance)
    closest.prompt:InputHoldBegin()
    task.wait(0.2)
    closest.prompt:InputHoldEnd()
    return true
 end
 
+-- Fire multiple times
 local function fireClosestPromptMultiple(times)
    for i = 1, times do
       fireClosestPrompt()
@@ -125,19 +143,21 @@ local function fireClosestPromptMultiple(times)
    end
 end
 
+-- List all prompts for debugging
 local function listAllPrompts()
-   print("=== Listing all ProximityPrompts in workspace ===")
+   debugPrint("=== Listing all ProximityPrompts in workspace ===")
    local count = 0
    for _, prompt in pairs(workspace:GetDescendants()) do
       if prompt:IsA("ProximityPrompt") then
          count = count + 1
          local pos = getPromptPosition(prompt)
-         print(count .. ": " .. prompt.Parent:GetFullName() .. " | Position: " .. tostring(pos))
+         debugPrint(count .. ": " .. prompt.Parent:GetFullName() .. " | Position: " .. tostring(pos) .. " | Enabled: " .. tostring(prompt.Enabled))
       end
    end
-   print("Total prompts found: " .. count)
+   debugPrint("Total prompts found: " .. count)
 end
 
+-- ========== Item Equipping ==========
 local packOrder = {"Red Fun Flour Pack", "Purple Fun Flour Pack", "Green Fun Flour Pack", "White Fun Flour Pack"}
 local syrupOrder = {"Raspberry Syrup", "Blackberry Syrup", "Blueberry Syrup", "Goldberry Syrup"}
 
@@ -145,6 +165,7 @@ local function autoEquipItem()
    local character = LocalPlayer.Character
    local backpack = LocalPlayer.Backpack
    if not character then return false end
+   
    local currentTool = character:FindFirstChildOfClass("Tool")
    if currentTool then
       for _, itemName in ipairs(packOrder) do
@@ -154,6 +175,7 @@ local function autoEquipItem()
          if currentTool.Name == itemName then return true end
       end
    end
+   
    for _, itemName in ipairs(packOrder) do
       for _, tool in pairs(backpack:GetChildren()) do
          if tool:IsA("Tool") and tool.Name == itemName then
@@ -166,6 +188,7 @@ local function autoEquipItem()
          if tool:IsA("Tool") and tool.Name == itemName then return true end
       end
    end
+   
    for _, itemName in ipairs(syrupOrder) do
       for _, tool in pairs(backpack:GetChildren()) do
          if tool:IsA("Tool") and tool.Name == itemName then
@@ -178,6 +201,8 @@ local function autoEquipItem()
          if tool:IsA("Tool") and tool.Name == itemName then return true end
       end
    end
+   
+   debugPrint("No pack or syrup found to equip!")
    return false
 end
 
@@ -187,12 +212,14 @@ local function autoEquipDumpTool()
    local character = LocalPlayer.Character
    local backpack = LocalPlayer.Backpack
    if not character then return false end
+   
    local currentTool = character:FindFirstChildOfClass("Tool")
    if currentTool then
       for _, itemName in ipairs(dumpOrder) do
          if currentTool.Name:find(itemName) then return true end
       end
    end
+   
    for _, itemName in ipairs(dumpOrder) do
       for _, tool in pairs(backpack:GetChildren()) do
          if tool:IsA("Tool") and tool.Name:find(itemName) then
@@ -205,12 +232,18 @@ local function autoEquipDumpTool()
          if tool:IsA("Tool") and tool.Name:find(itemName) then return true end
       end
    end
+   debugPrint("No dump tool found!")
    return false
 end
 
+-- ========== NPC Location ==========
 local function findNPCLocation(npcName)
    local packSelling = workspace:FindFirstChild("PackSelling")
-   if not packSelling then return nil, nil end
+   if not packSelling then 
+      debugPrint("PackSelling not found")
+      return nil, nil 
+   end
+   
    for _, descendant in pairs(packSelling:GetDescendants()) do
       if descendant:IsA("Model") and (descendant.Name == npcName or string.lower(descendant.Name):find(string.lower(npcName))) then
          local locationCurrent = descendant.Parent
@@ -219,6 +252,7 @@ local function findNPCLocation(npcName)
             locationName = locationCurrent.Name
             locationCurrent = locationCurrent.Parent
          end
+         
          local pos = nil
          if locationName and packSellingLocations[locationName] then
             local coords = packSellingLocations[locationName].coords
@@ -228,17 +262,23 @@ local function findNPCLocation(npcName)
          elseif descendant:FindFirstChild("Head") then
             pos = descendant.Head.Position
          end
+         
          if pos then
+            debugPrint("Found " .. npcName .. " at " .. (locationName or "unknown") .. " pos: " .. tostring(pos))
             return locationName, pos
          end
       end
    end
+   debugPrint(npcName .. " not found")
    return nil, nil
 end
 
+-- ========== Instant Proximity Prompts ==========
 local function startInstantPrompt()
    if instantPromptRunning then return end
    instantPromptRunning = true
+   debugPrint("Instant Prompts ENABLED")
+   
    for _, prompt in pairs(workspace:GetDescendants()) do
       if prompt:IsA("ProximityPrompt") then
          if not originalHoldDurations[prompt] then
@@ -247,12 +287,14 @@ local function startInstantPrompt()
          prompt.HoldDuration = 0
       end
    end
+   
    task.spawn(function()
       while instantPromptRunning do
          for _, prompt in pairs(workspace:GetDescendants()) do
             if prompt:IsA("ProximityPrompt") and not originalHoldDurations[prompt] then
                originalHoldDurations[prompt] = prompt.HoldDuration
                prompt.HoldDuration = 0
+               debugPrint("New prompt detected")
             end
          end
          task.wait(1)
@@ -261,6 +303,7 @@ local function startInstantPrompt()
 end
 
 local function stopInstantPrompt()
+   debugPrint("Instant Prompts DISABLED")
    instantPromptRunning = false
    for prompt, duration in pairs(originalHoldDurations) do
       if prompt and prompt:IsA("ProximityPrompt") then
@@ -270,13 +313,20 @@ local function stopInstantPrompt()
    originalHoldDurations = {}
 end
 
+-- ========== Auto Sell Packs ==========
 local isAutoSelling = false
 
 local function sellToNPC(npcName, locationName, targetPos)
    if not targetPos then return false end
-   if not autoEquipItem() then return false end
+   if not autoEquipItem() then 
+      debugPrint("Failed to equip item")
+      return false 
+   end
+   
    teleportTo(targetPos.X, targetPos.Y + 3, targetPos.Z)
    task.wait(0.8)
+   
+   debugPrint("Firing prompts at " .. locationName)
    fireClosestPromptMultiple(5)
    return true
 end
@@ -284,6 +334,7 @@ end
 local function startAutoSell()
    if isAutoSelling then return end
    isAutoSelling = true
+   debugPrint("Auto Sell ENABLED")
    task.spawn(function()
       while isAutoSelling do
          local pookieLoc, pookiePos = findNPCLocation("Pookie")
@@ -295,7 +346,9 @@ local function startAutoSell()
                task.wait(3)
             end
          end
+         
          if not isAutoSelling then break
+         
          local danLoc, danPos = findNPCLocation("Dan")
          if danPos then
             local last = lastNPCLocation["Dan"]
@@ -312,8 +365,10 @@ end
 
 local function stopAutoSell()
    isAutoSelling = false
+   debugPrint("Auto Sell DISABLED")
 end
 
+-- ========== Auto ATM ==========
 local isATMFarming = false
 
 local function useATM()
@@ -330,6 +385,7 @@ end
 local function startATMFarm()
    if isATMFarming then return end
    isATMFarming = true
+   debugPrint("ATM Farm ENABLED")
    task.spawn(function()
       while isATMFarming do
          if tick() - lastATMTime >= 300 then
@@ -343,13 +399,16 @@ end
 
 local function stopATMFarm()
    isATMFarming = false
+   debugPrint("ATM Farm DISABLED")
 end
 
+-- ========== Flour & Box Farms ==========
 local isFlourFarming = false
 
 local function startFlourFarm()
    if isFlourFarming then return end
    isFlourFarming = true
+   debugPrint("Flour Farm ENABLED")
    task.spawn(function()
       while isFlourFarming do
          for _, table in ipairs(flourTables) do
@@ -365,6 +424,7 @@ end
 
 local function stopFlourFarm()
    isFlourFarming = false
+   debugPrint("Flour Farm DISABLED")
 end
 
 local isBoxFarming = false
@@ -372,6 +432,7 @@ local isBoxFarming = false
 local function startBoxFarm()
    if isBoxFarming then return end
    isBoxFarming = true
+   debugPrint("Box Farm ENABLED")
    task.spawn(function()
       while isBoxFarming do
          for _, location in ipairs(boxLocations) do
@@ -387,8 +448,10 @@ end
 
 local function stopBoxFarm()
    isBoxFarming = false
+   debugPrint("Box Farm DISABLED")
 end
 
+-- ========== Stats Boost ==========
 local function boostStats()
    local playerName = LocalPlayer.Name
    local playerData = game:GetService("ReplicatedStorage"):FindFirstChild("PlayerData")
@@ -401,11 +464,13 @@ local function boostStats()
             local intelligence = statistics:FindFirstChild("Intelligence")
             if luck then luck.Value = 999 end
             if intelligence then intelligence.Value = 999 end
+            debugPrint("Stats boosted")
          end
       end
    end
 end
 
+-- ========== UI Elements ==========
 FarmsTab:CreateToggle({
    Name = "🔄 Auto Farm Flour",
    CurrentValue = false,
@@ -455,8 +520,9 @@ MiscTab:CreateButton({
 })
 
 MiscTab:CreateButton({
-   Name = "🔥 Test Fire Prompt",
+   Name = "🔥 Test Fire Prompt at Current Location",
    Callback = function()
+      debugPrint("Manually firing prompt...")
       fireClosestPrompt()
    end,
 })
@@ -503,6 +569,7 @@ MiscTab:CreateToggle({
    end,
 })
 
+-- ========== Teleport Locations ==========
 local locations = {
    {name = "🍗 BFC", coords = {631.2, 161.5, -113.7}},
    {name = "🏦 Bank", coords = {-107.6, 180.1, 1114.2}},
@@ -542,4 +609,4 @@ for _, loc in ipairs(locations) do
    })
 end
 
-print("Chirax │ Fight For New York V.1 loaded! Use the 'List All Proximity Prompts' button to debug.")
+debugPrint("Script loaded! Use the 'List All Proximity Prompts' button to see available prompts.")
