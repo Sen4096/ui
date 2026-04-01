@@ -65,12 +65,27 @@ local atmLocations = {
 }
 
 -- ============================
+-- PackSelling Location Coordinates (Saved)
+-- ============================
+local packSellingLocations = {
+   ["the playground"] = {coords = {-24.3, 158.2, -269.5}},
+   ["the deli alley"] = {coords = {42.2, 176.5, 167.0}},
+   ["fresh seafood"] = {coords = {-235.0, 158.0, -146.9}},
+   ["spring creek"] = {coords = {699.1, 158.0, -140.6}},
+   ["the bridge"] = {coords = {-272.9, 161.6, 354.7}},
+   ["central courts"] = {coords = {92.4, 180.7, 447.5}},
+   ["linden courts"] = {coords = {509.5, 176.5, 333.2}},
+   ["the railway drop"] = {coords = {387.1, 176.5, 666.5}},
+   ["warehouses"] = {coords = {-346.9, 175.9, 834.3}}
+}
+
+-- ============================
 -- Variables for toggles
 -- ============================
 local noclipEnabled = false
 local instantPromptsEnabled = false
 local originalHoldDurations = {}
-local lastNPCPositions = {}
+local lastNPCInfo = {} -- Stores {location = locationName, position = pos}
 local lastATMTime = 0
 
 -- ============================
@@ -276,106 +291,62 @@ local function autoEquipDumpTool()
 end
 
 -- ============================
--- Find NPC Position in PackSelling
+-- Find NPC Location in PackSelling
+-- Returns: locationName, position
 -- ============================
-local function findNPCPosition(npcName)
+local function findNPCLocation(npcName)
    local packSelling = workspace:FindFirstChild("PackSelling")
    if not packSelling then 
-      return nil 
+      return nil, nil
    end
    
-   for _, child in pairs(packSelling:GetChildren()) do
-      if child:IsA("Model") and (child.Name == npcName or string.find(child.Name, npcName)) then
-         local teleportPart = child:FindFirstChild("TeleportPart")
-         if teleportPart and teleportPart:IsA("BasePart") then
-            return teleportPart.Position
+   -- Search through all descendants to find Dan or Pookie
+   for _, descendant in pairs(packSelling:GetDescendants()) do
+      if descendant:IsA("Model") and (descendant.Name == npcName or string.find(descendant.Name, npcName)) then
+         -- Found the NPC, now find its parent location folder
+         local current = descendant.Parent
+         local locationName = nil
+         
+         -- Traverse up to find the location folder (child of PackSelling)
+         while current and current ~= packSelling do
+            locationName = current.Name
+            current = current.Parent
          end
          
-         local rootPart = child:FindFirstChild("HumanoidRootPart")
-         if rootPart then
-            return rootPart.Position
-         end
-         
-         local head = child:FindFirstChild("Head")
-         if head then
-            return head.Position
-         end
-         
-         local torso = child:FindFirstChild("Torso")
-         if torso then
-            return torso.Position
-         end
-         
-         for _, part in pairs(child:GetDescendants()) do
-            if part:IsA("BasePart") then
-               return part.Position
-            end
+         -- Check if we have saved coordinates for this location
+         if locationName and packSellingLocations[locationName] then
+            local coords = packSellingLocations[locationName].coords
+            local pos = Vector3.new(coords[1], coords[2], coords[3])
+            return locationName, pos
          end
       end
    end
-   return nil
-end
-
--- ============================
--- Get All NPC Positions
--- ============================
-local function getAllNPCPositions()
-   local npcs = {}
-   local packSelling = workspace:FindFirstChild("PackSelling")
-   if not packSelling then 
-      return npcs
-   end
    
-   for _, child in pairs(packSelling:GetChildren()) do
-      if child:IsA("Model") and (child.Name == "Dan" or child.Name == "Pookie" or string.find(child.Name, "Dan") or string.find(child.Name, "Pookie")) then
-         local pos = nil
-         local teleportPart = child:FindFirstChild("TeleportPart")
-         if teleportPart and teleportPart:IsA("BasePart") then
-            pos = teleportPart.Position
-         else
-            local rootPart = child:FindFirstChild("HumanoidRootPart")
-            if rootPart then
-               pos = rootPart.Position
-            else
-               local head = child:FindFirstChild("Head")
-               if head then
-                  pos = head.Position
-               else
-                  for _, part in pairs(child:GetDescendants()) do
-                     if part:IsA("BasePart") then
-                        pos = part.Position
-                        break
-                     end
-                  end
-               end
-            end
-         end
-         if pos then
-            npcs[child.Name] = pos
-         end
-      end
-   end
-   return npcs
+   return nil, nil
 end
 
 -- ============================
--- Auto Sell Packs Function (with camera look and equip)
+-- Auto Sell Packs Function (Finds Dan and Pookie, uses saved coordinates)
 -- ============================
 local isAutoSelling = false
 
-local function sellToNPC(npcName, npcPos)
+local function sellToNPC(npcName, locationName, targetPos)
+   -- Equip pack/syrup/candy item FIRST
    local equipped = autoEquipItem()
    if not equipped then
       return false
    end
    task.wait(0.5)
    
-   teleportTo(npcPos.X, npcPos.Y + 3, npcPos.Z)
+   -- Teleport to the saved location coordinates
+   teleportTo(targetPos.X, targetPos.Y + 3, targetPos.Z)
    task.wait(0.5)
    
-   lookAtWithCamera(npcPos)
+   -- Move camera to look at the NPC
+   lookAtWithCamera(targetPos)
    task.wait(0.1)
    
+   -- Fire the proximity prompt
    fireProximityPromptWithLook()
    task.wait(0.3)
    
@@ -388,16 +359,26 @@ local function startAutoSell()
    
    task.spawn(function()
       while isAutoSelling do
-         local currentNPCPositions = getAllNPCPositions()
+         -- Check for Dan
+         local danLocation, danPos = findNPCLocation("Dan")
+         if danPos then
+            local lastInfo = lastNPCInfo["Dan"]
+            if not lastInfo or lastInfo.location ~= danLocation then
+               sellToNPC("Dan", danLocation, danPos)
+               lastNPCInfo["Dan"] = {location = danLocation, position = danPos}
+               task.wait(2)
+            end
+         end
          
-         for npcName, currentPos in pairs(currentNPCPositions) do
-            if not isAutoSelling then break end
-            
-            local lastPos = lastNPCPositions[npcName]
-            
-            if not lastPos or (currentPos - lastPos).Magnitude > 1 then
-               sellToNPC(npcName, currentPos)
-               lastNPCPositions[npcName] = currentPos
+         if not isAutoSelling then break end
+         
+         -- Check for Pookie
+         local pookieLocation, pookiePos = findNPCLocation("Pookie")
+         if pookiePos then
+            local lastInfo = lastNPCInfo["Pookie"]
+            if not lastInfo or lastInfo.location ~= pookieLocation then
+               sellToNPC("Pookie", pookieLocation, pookiePos)
+               lastNPCInfo["Pookie"] = {location = pookieLocation, position = pookiePos}
                task.wait(2)
             end
          end
