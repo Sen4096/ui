@@ -105,8 +105,8 @@ local function getAllPromptsInRange()
                promptPosition = promptParent.Position or Vector3.new()
             end
             local distance = (root.Position - promptPosition).Magnitude
-            if distance <= 20 then
-               table.insert(prompts, {prompt = prompt, position = promptPosition, distance = distance, parent = promptParent})
+            if distance <= 15 then
+               table.insert(prompts, {prompt = prompt, position = promptPosition, distance = distance})
             end
          end
       end
@@ -115,80 +115,36 @@ local function getAllPromptsInRange()
    return prompts
 end
 
--- INSTANT fire ALL prompts with camera look
-local function fireAllPromptsInstant()
+-- INSTANT fire the closest prompt (same as flour/cards)
+local function fireClosestPrompt()
    local prompts = getAllPromptsInRange()
    if #prompts == 0 then return false end
    
-   local fired = false
-   for _, data in ipairs(prompts) do
-      if data.position then
-         lookAtWithCamera(data.position)
-         task.wait(0.05)
-         data.prompt:InputHoldBegin()
-         task.wait(0.1)
-         data.prompt:InputHoldEnd()
-         fired = true
-      end
-   end
-   return fired
-end
-
--- Fire prompts at a specific location (for NPC selling)
-local function firePromptsAtLocation(locationPos)
-   if not locationPos then return false end
-   
-   -- Look at the location
-   lookAtWithCamera(locationPos)
+   local closest = prompts[1]
+   lookAtWithCamera(closest.position)
+   closest.prompt:InputHoldBegin()
    task.wait(0.1)
-   
-   -- Find and fire prompts near that location
-   local char = LocalPlayer.Character
-   if not char then return false end
-   
-   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
-   if not root then return false end
-   
-   local fired = false
-   for _, prompt in pairs(workspace:GetDescendants()) do
-      if prompt:IsA("ProximityPrompt") and prompt.Enabled then
-         local promptParent = prompt.Parent
-         if promptParent then
-            local promptPos = promptParent:FindFirstChild("Position")
-            local promptPosition
-            if promptPos then
-               promptPosition = promptPos.Position
-            elseif promptParent:IsA("BasePart") then
-               promptPosition = promptParent.Position
-            else
-               promptPosition = promptParent.Position or Vector3.new()
-            end
-            local distanceToLocation = (locationPos - promptPosition).Magnitude
-            local distanceToPlayer = (root.Position - promptPosition).Magnitude
-            
-            if distanceToLocation <= 10 and distanceToPlayer <= 20 then
-               lookAtWithCamera(promptPosition)
-               task.wait(0.05)
-               prompt:InputHoldBegin()
-               task.wait(0.1)
-               prompt:InputHoldEnd()
-               fired = true
-            end
-         end
-      end
-   end
-   return fired
+   closest.prompt:InputHoldEnd()
+   return true
 end
 
--- Auto-scan for proximity prompts (every 0.5 seconds)
+-- Fire the closest prompt multiple times (for flour - 4 times super fast)
+local function fireClosestPromptMultiple(times)
+   for i = 1, times do
+      fireClosestPrompt()
+      task.wait(0.1)
+   end
+end
+
+-- Auto-scan for proximity prompts (every 1 second)
 local autoScanRunning = false
 local function startAutoScan()
    if autoScanRunning then return end
    autoScanRunning = true
    task.spawn(function()
       while autoScanRunning do
-         fireAllPromptsInstant()
-         task.wait(0.5)
+         fireClosestPrompt()
+         task.wait(1)
       end
    end)
 end
@@ -295,16 +251,10 @@ local function sellToNPC(npcName, locationName, targetPos)
    teleportTo(targetPos.X, targetPos.Y + 3, targetPos.Z)
    task.wait(0.5)
    
-   -- Fire prompts at this location multiple times
-   local success = false
-   for i = 1, 5 do
-      if firePromptsAtLocation(targetPos) then
-         success = true
-      end
-      task.wait(0.2)
-   end
+   -- Fire the closest prompt multiple times (same as flour - 4 times super fast)
+   fireClosestPromptMultiple(4)
    
-   return success
+   return true
 end
 
 local function startAutoSell()
@@ -354,10 +304,8 @@ local function useATM()
    local atmPos = Vector3.new(randomATM.coords[1], randomATM.coords[2] + 3, randomATM.coords[3])
    teleportTo(atmPos.X, atmPos.Y, atmPos.Z)
    task.wait(0.5)
-   for i = 1, 3 do
-      fireAllPromptsInstant()
-      task.wait(0.1)
-   end
+   -- Same as before - fire once
+   fireClosestPrompt()
    return true
 end
 
@@ -389,13 +337,10 @@ local function startFlourFarm()
          for _, table in ipairs(flourTables) do
             if not isFlourFarming then break end
             teleportTo(table.coords[1], table.coords[2], table.coords[3])
-            task.wait(0.8)
-            for i = 1, 4 do
-               if not isFlourFarming then break end
-               fireAllPromptsInstant()
-               task.wait(0.2)
-            end
-            task.wait(0.3)
+            task.wait(1)
+            -- Fire prompt 4 times super fast
+            fireClosestPromptMultiple(4)
+            task.wait(0.5)
          end
       end
    end)
@@ -415,9 +360,9 @@ local function startBoxFarm()
          for _, location in ipairs(boxLocations) do
             if not isBoxFarming then break end
             teleportTo(location.coords[1], location.coords[2], location.coords[3])
-            task.wait(1.5)
-            fireAllPromptsInstant()
-            task.wait(0.3)
+            task.wait(2)
+            fireClosestPrompt()
+            task.wait(0.5)
          end
       end
    end)
@@ -544,7 +489,7 @@ MiscTab:CreateToggle({
 })
 
 MiscTab:CreateToggle({
-   Name = "🔄 Auto Scan Proximity Prompts (Every 0.5s)",
+   Name = "🔄 Auto Scan Proximity Prompts (Every 1s)",
    CurrentValue = false,
    Flag = "AutoScan",
    Callback = function(Value)
