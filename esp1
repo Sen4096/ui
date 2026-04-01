@@ -1,0 +1,623 @@
+-- Chirax │ Fight For New York V.1
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local Window = Rayfield:CreateWindow({
+   Name = "Chirax │ Fight For New York V.1",
+   Icon = "bug-play",
+   LoadingTitle = "Chirax │ Fight For New York V.1",
+   LoadingSubtitle = "by w9ec",
+   Theme = "Amethyst",
+   ConfigurationSaving = { Enabled = false },
+   Discord = { Enabled = false },
+   KeySystem = false
+})
+
+local FarmsTab = Window:CreateTab("🌾 Farms", 0)
+local SellTab = Window:CreateTab("💰 Sell", 0)
+local MiscTab = Window:CreateTab("⚙️ Misc", 0)
+local TeleportTab = Window:CreateTab("📍 Teleport", 0)
+
+local flourTables = {
+   {name = "Table 1", coords = {429.3, 171.0, -400.4}},
+   {name = "Table 2", coords = {396.6, 182.2, -395.0}},
+   {name = "Table 3", coords = {431.0, 182.2, -399.5}},
+   {name = "Table 4", coords = {429.2, 178.6, -399.9}}
+}
+
+local boxLocations = {
+   {name = "Van", coords = {142.6, 179.5, 191.6}},
+   {name = "Place", coords = {120.6, 178.5, 216.1}}
+}
+
+local atmLocations = {
+   {name = "ATM 1", coords = {-101.2, 176.5, 1107.2}},
+   {name = "ATM 2", coords = {-205.5, 155.2, -142.5}},
+   {name = "ATM 3", coords = {-553.6, 176.5, 626.4}},
+   {name = "ATM 4", coords = {197.1, 176.5, 933.7}},
+   {name = "ATM 5", coords = {415.9, 176.0, 372.5}},
+   {name = "ATM 6", coords = {-20.3, 176.0, 600.9}},
+   {name = "ATM 7", coords = {-630.3, 176.0, 1039.8}},
+   {name = "ATM 8", coords = {-111.1, 176.5, 1079.7}},
+   {name = "ATM 9", coords = {128.9, 176.0, 170.7}},
+   {name = "ATM 10", coords = {-128.7, 176.0, 727.9}}
+}
+
+local packSellingLocations = {
+   ["the playground"] = {coords = {-24.3, 158.2, -269.5}},
+   ["the deli alley"] = {coords = {42.2, 176.5, 167.0}},
+   ["fresh seafood"] = {coords = {-235.0, 158.0, -146.9}},
+   ["spring creek"] = {coords = {699.1, 158.0, -140.6}},
+   ["the bridge"] = {coords = {-272.9, 161.6, 354.7}},
+   ["central courts"] = {coords = {92.4, 180.7, 447.5}},
+   ["linden courts"] = {coords = {509.5, 176.5, 333.2}},
+   ["the railway drop"] = {coords = {387.1, 176.5, 666.5}},
+   ["warehouses"] = {coords = {-346.9, 175.9, 834.3}}
+}
+
+local noclipEnabled = false
+local lastNPCLocation = {}
+local lastATMTime = 0
+local instantPromptRunning = false
+local originalHoldDurations = {}
+
+-- Debug console prints
+local function debugPrint(msg)
+   print("[Chirax] " .. msg)
+end
+
+local function teleportTo(x, y, z)
+   local char = LocalPlayer.Character
+   if not char then return false end
+   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
+   if not root then return false end
+   root.CFrame = CFrame.new(x, y, z)
+   task.wait(0.1)
+   return true
+end
+
+-- Get all prompts with their positions
+local function getAllPromptsInRange()
+   local char = LocalPlayer.Character
+   if not char then return {} end
+   
+   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
+   if not root then return {} end
+   
+   local prompts = {}
+   for _, prompt in pairs(workspace:GetDescendants()) do
+      if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+         local promptParent = prompt.Parent
+         if promptParent then
+            local promptPos = promptParent:FindFirstChild("Position")
+            local promptPosition
+            if promptPos then
+               promptPosition = promptPos.Position
+            elseif promptParent:IsA("BasePart") then
+               promptPosition = promptParent.Position
+            else
+               promptPosition = promptParent.Position or Vector3.new()
+            end
+            local distance = (root.Position - promptPosition).Magnitude
+            if distance <= 20 then
+               table.insert(prompts, {prompt = prompt, position = promptPosition, distance = distance, name = promptParent.Name})
+            end
+         end
+      end
+   end
+   table.sort(prompts, function(a, b) return a.distance < b.distance end)
+   return prompts
+end
+
+-- Fire the closest prompt
+local function fireClosestPrompt()
+   local prompts = getAllPromptsInRange()
+   if #prompts == 0 then 
+      debugPrint("No prompts in range")
+      return false 
+   end
+   
+   local closest = prompts[1]
+   debugPrint("Firing prompt: " .. (closest.name or "unknown") .. " at distance: " .. closest.distance)
+   closest.prompt:InputHoldBegin()
+   task.wait(0.15)
+   closest.prompt:InputHoldEnd()
+   return true
+end
+
+-- Fire the closest prompt multiple times
+local function fireClosestPromptMultiple(times)
+   for i = 1, times do
+      fireClosestPrompt()
+      task.wait(0.2)
+   end
+end
+
+-- Auto equip packs in order: Red, Purple, Green, White
+local packOrder = {"Red Fun Flour Pack", "Purple Fun Flour Pack", "Green Fun Flour Pack", "White Fun Flour Pack"}
+local syrupOrder = {"Raspberry Syrup", "Blackberry Syrup", "Blueberry Syrup", "Goldberry Syrup"}
+
+local function autoEquipItem()
+   local character = LocalPlayer.Character
+   local backpack = LocalPlayer.Backpack
+   if not character then return false end
+   
+   -- Check if already have a pack equipped
+   local currentTool = character:FindFirstChildOfClass("Tool")
+   if currentTool then
+      for _, itemName in ipairs(packOrder) do
+         if currentTool.Name == itemName then 
+            debugPrint("Already have pack equipped: " .. currentTool.Name)
+            return true 
+         end
+      end
+      for _, itemName in ipairs(syrupOrder) do
+         if currentTool.Name == itemName then 
+            debugPrint("Already have syrup equipped: " .. currentTool.Name)
+            return true 
+         end
+      end
+   end
+   
+   -- Try to equip packs in order
+   for _, itemName in ipairs(packOrder) do
+      for _, tool in pairs(backpack:GetChildren()) do
+         if tool:IsA("Tool") and tool.Name == itemName then
+            tool.Parent = character
+            debugPrint("Equipped pack: " .. itemName)
+            task.wait(0.3)
+            return true
+         end
+      end
+      for _, tool in pairs(character:GetChildren()) do
+         if tool:IsA("Tool") and tool.Name == itemName then
+            debugPrint("Already have pack in inventory: " .. itemName)
+            return true
+         end
+      end
+   end
+   
+   -- Try to equip syrups in order if no packs
+   for _, itemName in ipairs(syrupOrder) do
+      for _, tool in pairs(backpack:GetChildren()) do
+         if tool:IsA("Tool") and tool.Name == itemName then
+            tool.Parent = character
+            debugPrint("Equipped syrup: " .. itemName)
+            task.wait(0.3)
+            return true
+         end
+      end
+      for _, tool in pairs(character:GetChildren()) do
+         if tool:IsA("Tool") and tool.Name == itemName then
+            debugPrint("Already have syrup in inventory: " .. itemName)
+            return true
+         end
+      end
+   end
+   
+   debugPrint("No pack or syrup found to equip!")
+   return false
+end
+
+-- Auto equip dump tools in order: High, Mid, Medium, Low
+local dumpOrder = {"High", "Mid", "Medium", "Low"}
+
+local function autoEquipDumpTool()
+   local character = LocalPlayer.Character
+   local backpack = LocalPlayer.Backpack
+   if not character then return false end
+   
+   local currentTool = character:FindFirstChildOfClass("Tool")
+   if currentTool then
+      for _, itemName in ipairs(dumpOrder) do
+         if currentTool.Name:find(itemName) then 
+            debugPrint("Already have dump tool: " .. currentTool.Name)
+            return true 
+         end
+      end
+   end
+   
+   for _, itemName in ipairs(dumpOrder) do
+      for _, tool in pairs(backpack:GetChildren()) do
+         if tool:IsA("Tool") and tool.Name:find(itemName) then
+            tool.Parent = character
+            debugPrint("Equipped dump tool: " .. tool.Name)
+            task.wait(0.3)
+            return true
+         end
+      end
+      for _, tool in pairs(character:GetChildren()) do
+         if tool:IsA("Tool") and tool.Name:find(itemName) then
+            debugPrint("Already have dump tool: " .. tool.Name)
+            return true
+         end
+      end
+   end
+   debugPrint("No dump tool found!")
+   return false
+end
+
+-- INSTANT PROXIMITY PROMPT - Optimized version with less lag
+local function startInstantPrompt()
+   if instantPromptRunning then return end
+   instantPromptRunning = true
+   debugPrint("Instant Proximity Prompts ENABLED")
+   
+   -- Make all existing prompts instant
+   for _, prompt in pairs(workspace:GetDescendants()) do
+      if prompt:IsA("ProximityPrompt") then
+         if not originalHoldDurations[prompt] then
+            originalHoldDurations[prompt] = prompt.HoldDuration
+         end
+         prompt.HoldDuration = 0
+      end
+   end
+   
+   -- Auto scan for new prompts (every 1 second to reduce lag)
+   task.spawn(function()
+      while instantPromptRunning do
+         for _, prompt in pairs(workspace:GetDescendants()) do
+            if prompt:IsA("ProximityPrompt") and not originalHoldDurations[prompt] then
+               originalHoldDurations[prompt] = prompt.HoldDuration
+               prompt.HoldDuration = 0
+               debugPrint("New prompt found and set to instant")
+            end
+         end
+         task.wait(1)
+      end
+   end)
+end
+
+local function stopInstantPrompt()
+   debugPrint("Instant Proximity Prompts DISABLED")
+   instantPromptRunning = false
+   for prompt, duration in pairs(originalHoldDurations) do
+      if prompt and prompt:IsA("ProximityPrompt") then
+         prompt.HoldDuration = duration
+      end
+   end
+   originalHoldDurations = {}
+end
+
+-- Find Dan or Pookie location
+local function findNPCLocation(npcName)
+   local packSelling = workspace:FindFirstChild("PackSelling")
+   if not packSelling then 
+      debugPrint("PackSelling not found in workspace")
+      return nil, nil 
+   end
+   
+   debugPrint("Searching for " .. npcName .. " in PackSelling...")
+   
+   for _, descendant in pairs(packSelling:GetDescendants()) do
+      if descendant:IsA("Model") and (descendant.Name == npcName or string.lower(descendant.Name):find(string.lower(npcName))) then
+         debugPrint("Found " .. npcName .. " model: " .. descendant.Name)
+         
+         local current = descendant.Parent
+         local locationName = nil
+         while current and current ~= packSelling do
+            locationName = current.Name
+            current = current.Parent
+         end
+         debugPrint("Location folder: " .. (locationName or "unknown"))
+         
+         local pos = nil
+         if locationName and packSellingLocations[locationName] then
+            local coords = packSellingLocations[locationName].coords
+            pos = Vector3.new(coords[1], coords[2], coords[3])
+            debugPrint("Using saved coordinates for " .. locationName .. ": " .. tostring(pos))
+         elseif descendant:FindFirstChild("HumanoidRootPart") then
+            pos = descendant.HumanoidRootPart.Position
+            debugPrint("Using NPC HumanoidRootPart position: " .. tostring(pos))
+         elseif descendant:FindFirstChild("Head") then
+            pos = descendant.Head.Position
+            debugPrint("Using NPC Head position: " .. tostring(pos))
+         end
+         
+         if pos then
+            return locationName, pos
+         end
+      end
+   end
+   debugPrint("Could not find " .. npcName)
+   return nil, nil
+end
+
+local isAutoSelling = false
+
+local function sellToNPC(npcName, locationName, targetPos)
+   debugPrint("=== Selling to " .. npcName .. " at " .. locationName .. " ===")
+   debugPrint("Target position: " .. tostring(targetPos))
+   
+   if not autoEquipItem() then 
+      debugPrint("Failed to equip item, aborting sell")
+      return false 
+   end
+   
+   debugPrint("Teleporting to target...")
+   teleportTo(targetPos.X, targetPos.Y + 3, targetPos.Z)
+   task.wait(0.8)
+   
+   debugPrint("Firing proximity prompts...")
+   fireClosestPromptMultiple(5)
+   
+   debugPrint("=== Done selling to " .. npcName .. " ===")
+   return true
+end
+
+local function startAutoSell()
+   if isAutoSelling then return end
+   isAutoSelling = true
+   debugPrint("Auto Sell ENABLED")
+   task.spawn(function()
+      while isAutoSelling do
+         debugPrint("Scanning for Pookie...")
+         local pookieLocation, pookiePos = findNPCLocation("Pookie")
+         if pookiePos then
+            local lastLoc = lastNPCLocation["Pookie"]
+            if not lastLoc or lastLoc ~= pookieLocation then
+               sellToNPC("Pookie", pookieLocation, pookiePos)
+               lastNPCLocation["Pookie"] = pookieLocation
+               task.wait(3)
+            else
+               debugPrint("Pookie still at same location: " .. pookieLocation)
+            end
+         end
+         
+         if not isAutoSelling then break end
+         
+         debugPrint("Scanning for Dan...")
+         local danLocation, danPos = findNPCLocation("Dan")
+         if danPos then
+            local lastLoc = lastNPCLocation["Dan"]
+            if not lastLoc or lastLoc ~= danLocation then
+               sellToNPC("Dan", danLocation, danPos)
+               lastNPCLocation["Dan"] = danLocation
+               task.wait(3)
+            else
+               debugPrint("Dan still at same location: " .. danLocation)
+            end
+         end
+         
+         task.wait(1)
+      end
+   end)
+end
+
+local function stopAutoSell()
+   isAutoSelling = false
+   debugPrint("Auto Sell DISABLED")
+end
+
+local isATMFarming = false
+
+local function useATM()
+   debugPrint("=== Using ATM ===")
+   autoEquipDumpTool()
+   task.wait(0.3)
+   local randomATM = atmLocations[math.random(1, #atmLocations)]
+   local atmPos = Vector3.new(randomATM.coords[1], randomATM.coords[2] + 3, randomATM.coords[3])
+   debugPrint("Teleporting to ATM: " .. randomATM.name .. " at " .. tostring(atmPos))
+   teleportTo(atmPos.X, atmPos.Y, atmPos.Z)
+   task.wait(0.8)
+   fireClosestPrompt()
+   debugPrint("=== ATM done ===")
+   return true
+end
+
+local function startATMFarm()
+   if isATMFarming then return end
+   isATMFarming = true
+   debugPrint("ATM Farm ENABLED")
+   task.spawn(function()
+      while isATMFarming do
+         if tick() - lastATMTime >= 300 then
+            useATM()
+            lastATMTime = tick()
+         end
+         task.wait(1)
+      end
+   end)
+end
+
+local function stopATMFarm()
+   isATMFarming = false
+   debugPrint("ATM Farm DISABLED")
+end
+
+local isFlourFarming = false
+
+local function startFlourFarm()
+   if isFlourFarming then return end
+   isFlourFarming = true
+   debugPrint("Flour Farm ENABLED")
+   task.spawn(function()
+      while isFlourFarming do
+         for _, table in ipairs(flourTables) do
+            if not isFlourFarming then break end
+            debugPrint("Going to " .. table.name)
+            teleportTo(table.coords[1], table.coords[2], table.coords[3])
+            task.wait(1)
+            fireClosestPromptMultiple(4)
+            task.wait(0.5)
+         end
+      end
+   end)
+end
+
+local function stopFlourFarm()
+   isFlourFarming = false
+   debugPrint("Flour Farm DISABLED")
+end
+
+local isBoxFarming = false
+
+local function startBoxFarm()
+   if isBoxFarming then return end
+   isBoxFarming = true
+   debugPrint("Box Farm ENABLED")
+   task.spawn(function()
+      while isBoxFarming do
+         for _, location in ipairs(boxLocations) do
+            if not isBoxFarming then break end
+            debugPrint("Going to " .. location.name)
+            teleportTo(location.coords[1], location.coords[2], location.coords[3])
+            task.wait(2)
+            fireClosestPrompt()
+            task.wait(0.5)
+         end
+      end
+   end)
+end
+
+local function stopBoxFarm()
+   isBoxFarming = false
+   debugPrint("Box Farm DISABLED")
+end
+
+local function boostStats()
+   local playerName = LocalPlayer.Name
+   local playerData = game:GetService("ReplicatedStorage"):FindFirstChild("PlayerData")
+   if playerData then
+      local playerStats = playerData:FindFirstChild(playerName)
+      if playerStats then
+         local statistics = playerStats:FindFirstChild("Statistics")
+         if statistics then
+            local luck = statistics:FindFirstChild("Luck")
+            local intelligence = statistics:FindFirstChild("Intelligence")
+            if luck then luck.Value = 999 end
+            if intelligence then intelligence.Value = 999 end
+            debugPrint("Stats boosted: Luck=999, Intelligence=999")
+         end
+      end
+   end
+end
+
+FarmsTab:CreateToggle({
+   Name = "🔄 Auto Farm Flour",
+   CurrentValue = false,
+   Flag = "AutoFlourFarm",
+   Callback = function(Value)
+      if Value then startFlourFarm() else stopFlourFarm() end
+   end,
+})
+
+FarmsTab:CreateToggle({
+   Name = "📦 Auto Farm Box",
+   CurrentValue = false,
+   Flag = "AutoBoxFarm",
+   Callback = function(Value)
+      if Value then startBoxFarm() else stopBoxFarm() end
+   end,
+})
+
+SellTab:CreateSection("Auto Farms")
+
+SellTab:CreateToggle({
+   Name = "💰 Auto Sell Packs (Pookie then Dan)",
+   CurrentValue = false,
+   Flag = "AutoSell",
+   Callback = function(Value)
+      if Value then startAutoSell() else stopAutoSell() end
+   end,
+})
+
+SellTab:CreateToggle({
+   Name = "🏧 Auto Card Fraud (Every 5 Minutes)",
+   CurrentValue = false,
+   Flag = "AutoATM",
+   Callback = function(Value)
+      if Value then startATMFarm() else stopATMFarm() end
+   end,
+})
+
+MiscTab:CreateButton({
+   Name = "📊 Boost Intelligence & Luck to 999",
+   Callback = function() boostStats() end,
+})
+
+MiscTab:CreateToggle({
+   Name = "🕊️ Noclip",
+   CurrentValue = false,
+   Flag = "Noclip",
+   Callback = function(Value)
+      noclipEnabled = Value
+      if Value then
+         task.spawn(function()
+            while noclipEnabled do
+               local char = LocalPlayer.Character
+               if char then
+                  for _, part in pairs(char:GetDescendants()) do
+                     if part:IsA("BasePart") then
+                        part.CanCollide = false
+                     end
+                  end
+               end
+               task.wait(0.1)
+            end
+         end)
+      else
+         local char = LocalPlayer.Character
+         if char then
+            for _, part in pairs(char:GetDescendants()) do
+               if part:IsA("BasePart") then
+                  part.CanCollide = true
+               end
+            end
+         end
+      end
+   end,
+})
+
+MiscTab:CreateToggle({
+   Name = "⚡ Instant Proximity Prompts",
+   CurrentValue = false,
+   Flag = "InstantPrompts",
+   Callback = function(Value)
+      if Value then startInstantPrompt() else stopInstantPrompt() end
+   end,
+})
+
+local locations = {
+   {name = "🍗 BFC", coords = {631.2, 161.5, -113.7}},
+   {name = "🏦 Bank", coords = {-107.6, 180.1, 1114.2}},
+   {name = "🏬 Gun Store", coords = {-266.2, 169.4, 678.1}},
+   {name = "🏭 Warehouse/Skitz", coords = {-1291.0, 127.9, -206.5}},
+   {name = "🗽 Exclusive Dealer", coords = {133.1, 142.2, 1310.2}},
+   {name = "💎 Jewel Store", coords = {14.1, 161.2, -110.7}},
+   {name = "🧺 Laundry", coords = {370.0, 179.4, 509.3}},
+   {name = "🏠 Trap House", coords = {403.1, 171.1, -391.7}},
+   {name = "✂️ Barber Shop", coords = {-663.2, 180.0, 612.2}},
+   {name = "📦 Box Job", coords = {129.8, 180.1, 217.4}},
+   {name = "👕 Clothing", coords = {219.6, 180.1, 919.8}},
+   {name = "🚘 Dealership", coords = {-596.6, 180.1, 1050.3}},
+   {name = "💳 Cards / Fraud", coords = {-241.0, 168.2, -118.1}},
+   {name = "🍓 Berry Grow", coords = {22.3, 179.5, 841.2}},
+   {name = "🧪 Lab", coords = {287.8, 180.0, 1272.7}},
+   {name = "🎨 Car Personalitzon", coords = {-618.2, 180.1, 1090.9}},
+   {name = "🏢 Penthouse", coords = {-259.8, 278.8, 1132.8}},
+   {name = "🎨 Tattoo", coords = {210.7, 160.5, -351.0}},
+   {name = "🏭 Warehouses", coords = {-346.9, 175.9, 834.3}},
+   {name = "🥪 Deli Alley", coords = {42.2, 176.5, 167.0}},
+   {name = "🏛️ Central Courts", coords = {92.4, 180.7, 447.5}},
+   {name = "🌉 The Bridge", coords = {-272.9, 161.6, 354.7}},
+   {name = "🐟 Fresh Seafood", coords = {-235.0, 158.0, -146.9}},
+   {name = "🌊 Spring Creek", coords = {699.1, 158.0, -140.6}},
+   {name = "🚂 Railway Drop", coords = {387.1, 176.5, 666.5}},
+   {name = "🌳 Linden Courts", coords = {509.5, 176.5, 333.2}},
+   {name = "🎠 The Playground", coords = {-24.3, 158.2, -269.5}}
+}
+
+for _, loc in ipairs(locations) do
+   TeleportTab:CreateButton({
+      Name = loc.name,
+      Callback = function()
+         teleportTo(loc.coords[1], loc.coords[2], loc.coords[3])
+      end,
+   })
+end
+
+debugPrint("Script loaded! Open F9 console to see debug messages.")
