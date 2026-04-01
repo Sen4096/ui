@@ -1,4 +1,4 @@
--- Chirax │ Fight For New York V.3
+-- Chirax │ Fight For New York V.1
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Players = game:GetService("Players")
@@ -7,9 +7,9 @@ local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 
 local Window = Rayfield:CreateWindow({
-   Name = "Chirax │ Fight For New York V.3",
+   Name = "Chirax │ Fight For New York V.1",
    Icon = "bug-play",
-   LoadingTitle = "Chirax │ Fight For New York V.3",
+   LoadingTitle = "Chirax │ Fight For New York V.1",
    LoadingSubtitle = "by w9ec",
    Theme = "Amethyst",
    ConfigurationSaving = { Enabled = false },
@@ -75,12 +75,11 @@ local function teleportTo(x, y, z)
    return true
 end
 
--- Force camera to look at a specific position
+-- Force camera to look at a specific position instantly
 local function lookAtWithCamera(targetPos)
    if not Camera then return end
    if not targetPos then return end
    Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetPos)
-   RunService.RenderStepped:Wait()
 end
 
 -- Get all prompts with their positions
@@ -106,64 +105,96 @@ local function getAllPromptsInRange()
                promptPosition = promptParent.Position or Vector3.new()
             end
             local distance = (root.Position - promptPosition).Magnitude
-            if distance <= 15 then
-               table.insert(prompts, {prompt = prompt, position = promptPosition, distance = distance})
+            if distance <= 20 then
+               table.insert(prompts, {prompt = prompt, position = promptPosition, distance = distance, parent = promptParent})
             end
          end
       end
    end
-   -- Sort by distance
    table.sort(prompts, function(a, b) return a.distance < b.distance end)
    return prompts
 end
 
--- Fire all prompts with camera look
-local function fireAllPromptsWithLook()
+-- INSTANT fire ALL prompts with camera look
+local function fireAllPromptsInstant()
    local prompts = getAllPromptsInRange()
    if #prompts == 0 then return false end
    
+   local fired = false
    for _, data in ipairs(prompts) do
-      -- Look at the prompt position
-      lookAtWithCamera(data.position)
-      task.wait(0.05)
-      -- Fire the prompt
-      data.prompt:InputHoldBegin()
-      task.wait(0.2)
-      data.prompt:InputHoldEnd()
-      task.wait(0.1)
+      if data.position then
+         lookAtWithCamera(data.position)
+         task.wait(0.05)
+         data.prompt:InputHoldBegin()
+         task.wait(0.1)
+         data.prompt:InputHoldEnd()
+         fired = true
+      end
    end
-   return #prompts > 0
+   return fired
 end
 
--- Fire only the closest prompt with camera look
-local function fireClosestPrompt()
-   local prompts = getAllPromptsInRange()
-   if #prompts == 0 then return false end
+-- Fire prompts at a specific location (for NPC selling)
+local function firePromptsAtLocation(locationPos)
+   if not locationPos then return false end
    
-   local closest = prompts[1]
-   lookAtWithCamera(closest.position)
-   task.wait(0.05)
-   closest.prompt:InputHoldBegin()
-   task.wait(0.2)
-   closest.prompt:InputHoldEnd()
-   return true
+   -- Look at the location
+   lookAtWithCamera(locationPos)
+   task.wait(0.1)
+   
+   -- Find and fire prompts near that location
+   local char = LocalPlayer.Character
+   if not char then return false end
+   
+   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
+   if not root then return false end
+   
+   local fired = false
+   for _, prompt in pairs(workspace:GetDescendants()) do
+      if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+         local promptParent = prompt.Parent
+         if promptParent then
+            local promptPos = promptParent:FindFirstChild("Position")
+            local promptPosition
+            if promptPos then
+               promptPosition = promptPos.Position
+            elseif promptParent:IsA("BasePart") then
+               promptPosition = promptParent.Position
+            else
+               promptPosition = promptParent.Position or Vector3.new()
+            end
+            local distanceToLocation = (locationPos - promptPosition).Magnitude
+            local distanceToPlayer = (root.Position - promptPosition).Magnitude
+            
+            if distanceToLocation <= 10 and distanceToPlayer <= 20 then
+               lookAtWithCamera(promptPosition)
+               task.wait(0.05)
+               prompt:InputHoldBegin()
+               task.wait(0.1)
+               prompt:InputHoldEnd()
+               fired = true
+            end
+         end
+      end
+   end
+   return fired
 end
 
--- Auto-run proximity prompt every 1 second
-local autoPromptRunning = false
-local function startAutoPrompt()
-   if autoPromptRunning then return end
-   autoPromptRunning = true
+-- Auto-scan for proximity prompts (every 0.5 seconds)
+local autoScanRunning = false
+local function startAutoScan()
+   if autoScanRunning then return end
+   autoScanRunning = true
    task.spawn(function()
-      while autoPromptRunning do
-         fireAllPromptsWithLook()
-         task.wait(1)
+      while autoScanRunning do
+         fireAllPromptsInstant()
+         task.wait(0.5)
       end
    end)
 end
 
-local function stopAutoPrompt()
-   autoPromptRunning = false
+local function stopAutoScan()
+   autoScanRunning = false
 end
 
 local validItems = {
@@ -187,7 +218,7 @@ local function autoEquipItem()
          for _, itemName in ipairs(validItems) do
             if tool.Name == itemName then
                tool.Parent = character
-               task.wait(0.5)
+               task.wait(0.3)
                return true
             end
          end
@@ -212,7 +243,7 @@ local function autoEquipDumpTool()
    for _, tool in pairs(backpack:GetChildren()) do
       if tool:IsA("Tool") and tool.Name:lower():find("dump") then
          tool.Parent = character
-         task.wait(0.5)
+         task.wait(0.3)
          return true
       end
    end
@@ -253,16 +284,27 @@ local isAutoSelling = false
 
 local function sellToNPC(npcName, locationName, targetPos)
    if not targetPos then return false end
-   if not autoEquipItem() then return false end
-   task.wait(0.5)
-   teleportTo(targetPos.X, targetPos.Y + 3, targetPos.Z)
-   task.wait(1)
-   -- Fire all prompts 3 times to ensure it works
-   for i = 1, 3 do
-      fireAllPromptsWithLook()
-      task.wait(0.3)
+   
+   -- Equip item
+   if not autoEquipItem() then 
+      return false 
    end
-   return true
+   task.wait(0.3)
+   
+   -- Teleport to location
+   teleportTo(targetPos.X, targetPos.Y + 3, targetPos.Z)
+   task.wait(0.5)
+   
+   -- Fire prompts at this location multiple times
+   local success = false
+   for i = 1, 5 do
+      if firePromptsAtLocation(targetPos) then
+         success = true
+      end
+      task.wait(0.2)
+   end
+   
+   return success
 end
 
 local function startAutoSell()
@@ -270,7 +312,7 @@ local function startAutoSell()
    isAutoSelling = true
    task.spawn(function()
       while isAutoSelling do
-         -- First scan for Pookie
+         -- Scan for Pookie
          local pookieLocation, pookiePos = findNPCLocation("Pookie")
          if pookiePos then
             local lastLoc = lastNPCLocation["Pookie"]
@@ -283,7 +325,7 @@ local function startAutoSell()
          
          if not isAutoSelling then break end
          
-         -- Then scan for Dan
+         -- Scan for Dan
          local danLocation, danPos = findNPCLocation("Dan")
          if danPos then
             local lastLoc = lastNPCLocation["Dan"]
@@ -307,14 +349,14 @@ local isATMFarming = false
 
 local function useATM()
    autoEquipDumpTool()
-   task.wait(0.5)
+   task.wait(0.3)
    local randomATM = atmLocations[math.random(1, #atmLocations)]
    local atmPos = Vector3.new(randomATM.coords[1], randomATM.coords[2] + 3, randomATM.coords[3])
    teleportTo(atmPos.X, atmPos.Y, atmPos.Z)
-   task.wait(1)
+   task.wait(0.5)
    for i = 1, 3 do
-      fireAllPromptsWithLook()
-      task.wait(0.3)
+      fireAllPromptsInstant()
+      task.wait(0.1)
    end
    return true
 end
@@ -337,60 +379,6 @@ local function stopATMFarm()
    isATMFarming = false
 end
 
-local isAutoPickup = false
-
-local function pickupDroppedTools()
-   local char = LocalPlayer.Character
-   if not char then return end
-   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
-   if not root then return end
-   local droppedTools = workspace:FindFirstChild("DroppedTools")
-   if not droppedTools then return end
-   for _, tool in pairs(droppedTools:GetChildren()) do
-      if tool:IsA("Tool") or tool:FindFirstChild("Handle") then
-         local toolPos = nil
-         if tool:IsA("Tool") and tool:FindFirstChild("Handle") then
-            toolPos = tool.Handle.Position
-         elseif tool:IsA("BasePart") then
-            toolPos = tool.Position
-         elseif tool:FindFirstChild("Handle") then
-            toolPos = tool.Handle.Position
-         else
-            for _, part in pairs(tool:GetDescendants()) do
-               if part:IsA("BasePart") then
-                  toolPos = part.Position
-                  break
-               end
-            end
-         end
-         if toolPos then
-            local distance = (root.Position - toolPos).Magnitude
-            if distance <= 15 then
-               teleportTo(toolPos.X, toolPos.Y + 2, toolPos.Z)
-               task.wait(0.5)
-               fireAllPromptsWithLook()
-               task.wait(0.2)
-            end
-         end
-      end
-   end
-end
-
-local function startAutoPickup()
-   if isAutoPickup then return end
-   isAutoPickup = true
-   task.spawn(function()
-      while isAutoPickup do
-         pickupDroppedTools()
-         task.wait(0.5)
-      end
-   end)
-end
-
-local function stopAutoPickup()
-   isAutoPickup = false
-end
-
 local isFlourFarming = false
 
 local function startFlourFarm()
@@ -401,13 +389,13 @@ local function startFlourFarm()
          for _, table in ipairs(flourTables) do
             if not isFlourFarming then break end
             teleportTo(table.coords[1], table.coords[2], table.coords[3])
-            task.wait(1)
+            task.wait(0.8)
             for i = 1, 4 do
                if not isFlourFarming then break end
-               fireClosestPrompt()
-               task.wait(0.3)
+               fireAllPromptsInstant()
+               task.wait(0.2)
             end
-            task.wait(0.5)
+            task.wait(0.3)
          end
       end
    end)
@@ -427,9 +415,9 @@ local function startBoxFarm()
          for _, location in ipairs(boxLocations) do
             if not isBoxFarming then break end
             teleportTo(location.coords[1], location.coords[2], location.coords[3])
-            task.wait(2)
-            fireClosestPrompt()
-            task.wait(0.5)
+            task.wait(1.5)
+            fireAllPromptsInstant()
+            task.wait(0.3)
          end
       end
    end)
@@ -500,15 +488,6 @@ MiscTab:CreateButton({
 })
 
 MiscTab:CreateToggle({
-   Name = "🔄 Auto Pickup Dropped Tools",
-   CurrentValue = false,
-   Flag = "AutoPickup",
-   Callback = function(Value)
-      if Value then startAutoPickup() else stopAutoPickup() end
-   end,
-})
-
-MiscTab:CreateToggle({
    Name = "🕊️ Noclip",
    CurrentValue = false,
    Flag = "Noclip",
@@ -565,11 +544,11 @@ MiscTab:CreateToggle({
 })
 
 MiscTab:CreateToggle({
-   Name = "🔄 Auto Run Proximity Prompts (Every 1s)",
+   Name = "🔄 Auto Scan Proximity Prompts (Every 0.5s)",
    CurrentValue = false,
-   Flag = "AutoPrompt",
+   Flag = "AutoScan",
    Callback = function(Value)
-      if Value then startAutoPrompt() else stopAutoPrompt() end
+      if Value then startAutoScan() else stopAutoScan() end
    end,
 })
 
