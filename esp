@@ -4,11 +4,12 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
+local VirtualUser = game:GetService("VirtualUser")
 
 local Window = Rayfield:CreateWindow({
-   Name = "Chirax │ Fight For New York V.1",
+   Name = "Chirax │ Fight For New York V.2",
    Icon = "bug-play",
-   LoadingTitle = "Chirax │ Fight For New York V.1",
+   LoadingTitle = "Chirax │ Fight For New York V.2",
    LoadingSubtitle = "by w9ec",
    Theme = "Amethyst",
    ConfigurationSaving = { Enabled = false },
@@ -46,7 +47,6 @@ local atmLocations = {
    {name = "ATM 10", coords = {-128.7, 176.0, 727.9}}
 }
 
--- ALL PackSelling Location Coordinates
 local packSellingLocations = {
    ["the playground"] = {coords = {-24.3, 158.2, -269.5}},
    ["the deli alley"] = {coords = {42.2, 176.5, 167.0}},
@@ -64,7 +64,6 @@ local instantPromptsEnabled = false
 local originalHoldDurations = {}
 local lastNPCLocation = {}
 local lastATMTime = 0
-local lastSellTime = 0
 
 local function teleportTo(x, y, z)
    local char = LocalPlayer.Character
@@ -78,37 +77,19 @@ end
 
 local function lookAtWithCamera(targetPos)
    if not Camera then return end
-   local char = LocalPlayer.Character
-   if not char then return end
-   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
-   if not root then return end
-   Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetPos)
+   local cameraPos = Camera.CFrame.Position
+   Camera.CFrame = CFrame.lookAt(cameraPos, targetPos)
 end
 
--- Monitor for new proximity prompts and make them instant
-local promptConnection = nil
-local function monitorNewPrompts()
-   if promptConnection then
-      promptConnection:Disconnect()
-   end
-   promptConnection = workspace.DescendantAdded:Connect(function(descendant)
-      if descendant:IsA("ProximityPrompt") and instantPromptsEnabled then
-         if not originalHoldDurations[descendant] then
-            originalHoldDurations[descendant] = descendant.HoldDuration
-         end
-         descendant.HoldDuration = 0
-      end
-   end)
-end
-
-local function getClosestPromptPosition()
+-- Force fire all proximity prompts in range
+local function fireAllPromptsInRange()
    local char = LocalPlayer.Character
-   if not char then return nil end
+   if not char then return false end
+   
    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
-   if not root then return nil end
-   local closestPrompt = nil
-   local closestDistance = math.huge
-   local closestPosition = nil
+   if not root then return false end
+   
+   local fired = false
    for _, prompt in pairs(workspace:GetDescendants()) do
       if prompt:IsA("ProximityPrompt") and prompt.Enabled then
          local promptParent = prompt.Parent
@@ -123,26 +104,73 @@ local function getClosestPromptPosition()
                promptPosition = promptParent.Position or Vector3.new()
             end
             local distance = (root.Position - promptPosition).Magnitude
-            if distance <= prompt.MaxActivationDistance and distance < closestDistance then
-               closestDistance = distance
-               closestPrompt = prompt
-               closestPosition = promptPosition
+            if distance <= 10 then
+               lookAtWithCamera(promptPosition)
+               task.wait(0.05)
+               prompt:InputHoldBegin()
+               task.wait(0.2)
+               prompt:InputHoldEnd()
+               fired = true
+               task.wait(0.1)
             end
          end
       end
    end
-   return closestPosition, closestPrompt
+   return fired
+end
+
+-- Auto-run proximity prompt every 1 second
+local autoPromptRunning = false
+local function startAutoPrompt()
+   if autoPromptRunning then return end
+   autoPromptRunning = true
+   task.spawn(function()
+      while autoPromptRunning do
+         fireAllPromptsInRange()
+         task.wait(1)
+      end
+   end)
+end
+
+local function stopAutoPrompt()
+   autoPromptRunning = false
 end
 
 local function fireProximityPromptWithLook()
-   local promptPos, prompt = getClosestPromptPosition()
-   if not promptPos or not prompt then return false end
-   lookAtWithCamera(promptPos)
-   prompt:InputHoldBegin()
-   task.wait(0.1)
-   prompt:InputHoldEnd()
-   task.wait(0.05)
-   return true
+   local char = LocalPlayer.Character
+   if not char then return false end
+   
+   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
+   if not root then return false end
+   
+   local fired = false
+   for _, prompt in pairs(workspace:GetDescendants()) do
+      if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+         local promptParent = prompt.Parent
+         if promptParent then
+            local promptPos = promptParent:FindFirstChild("Position")
+            local promptPosition
+            if promptPos then
+               promptPosition = promptPos.Position
+            elseif promptParent:IsA("BasePart") then
+               promptPosition = promptParent.Position
+            else
+               promptPosition = promptParent.Position or Vector3.new()
+            end
+            local distance = (root.Position - promptPosition).Magnitude
+            if distance <= 10 then
+               lookAtWithCamera(promptPosition)
+               task.wait(0.05)
+               prompt:InputHoldBegin()
+               task.wait(0.2)
+               prompt:InputHoldEnd()
+               fired = true
+               break
+            end
+         end
+      end
+   end
+   return fired
 end
 
 local function fireNearestPrompt()
@@ -152,6 +180,7 @@ local function fireNearestPrompt()
    if not root then return end
    local nearestPrompt = nil
    local nearestDistance = math.huge
+   local nearestPosition = nil
    for _, prompt in pairs(workspace:GetDescendants()) do
       if prompt:IsA("ProximityPrompt") and prompt.Enabled then
          local promptParent = prompt.Parent
@@ -169,13 +198,16 @@ local function fireNearestPrompt()
             if distance <= prompt.MaxActivationDistance and distance < nearestDistance then
                nearestDistance = distance
                nearestPrompt = prompt
+               nearestPosition = promptPosition
             end
          end
       end
    end
    if nearestPrompt then
+      lookAtWithCamera(nearestPosition)
+      task.wait(0.05)
       nearestPrompt:InputHoldBegin()
-      task.wait(0.1)
+      task.wait(0.2)
       nearestPrompt:InputHoldEnd()
    end
 end
@@ -270,10 +302,12 @@ local function sellToNPC(npcName, locationName, targetPos)
    if not autoEquipItem() then return false end
    task.wait(0.5)
    teleportTo(targetPos.X, targetPos.Y + 3, targetPos.Z)
-   task.wait(0.5)
-   lookAtWithCamera(targetPos)
-   fireProximityPromptWithLook()
-   task.wait(0.3)
+   task.wait(0.8)
+   -- Fire all prompts in range multiple times to ensure it works
+   for i = 1, 3 do
+      fireAllPromptsInRange()
+      task.wait(0.3)
+   end
    return true
 end
 
@@ -282,33 +316,27 @@ local function startAutoSell()
    isAutoSelling = true
    task.spawn(function()
       while isAutoSelling do
-         -- Check if 6 seconds have passed since last sell
-         local currentTime = tick()
-         if currentTime - lastSellTime >= 6 then
-            -- First scan for Pookie
-            local pookieLocation, pookiePos = findNPCLocation("Pookie")
-            if pookiePos then
-               local lastLoc = lastNPCLocation["Pookie"]
-               if not lastLoc or lastLoc ~= pookieLocation then
-                  sellToNPC("Pookie", pookieLocation, pookiePos)
-                  lastNPCLocation["Pookie"] = pookieLocation
-                  lastSellTime = tick()
-                  task.wait(2)
-               end
+         -- First scan for Pookie
+         local pookieLocation, pookiePos = findNPCLocation("Pookie")
+         if pookiePos then
+            local lastLoc = lastNPCLocation["Pookie"]
+            if not lastLoc or lastLoc ~= pookieLocation then
+               sellToNPC("Pookie", pookieLocation, pookiePos)
+               lastNPCLocation["Pookie"] = pookieLocation
+               task.wait(2)
             end
-            
-            if not isAutoSelling then break end
-            
-            -- Then scan for Dan
-            local danLocation, danPos = findNPCLocation("Dan")
-            if danPos then
-               local lastLoc = lastNPCLocation["Dan"]
-               if not lastLoc or lastLoc ~= danLocation then
-                  sellToNPC("Dan", danLocation, danPos)
-                  lastNPCLocation["Dan"] = danLocation
-                  lastSellTime = tick()
-                  task.wait(2)
-               end
+         end
+         
+         if not isAutoSelling then break end
+         
+         -- Then scan for Dan
+         local danLocation, danPos = findNPCLocation("Dan")
+         if danPos then
+            local lastLoc = lastNPCLocation["Dan"]
+            if not lastLoc or lastLoc ~= danLocation then
+               sellToNPC("Dan", danLocation, danPos)
+               lastNPCLocation["Dan"] = danLocation
+               task.wait(2)
             end
          end
          
@@ -329,10 +357,11 @@ local function useATM()
    local randomATM = atmLocations[math.random(1, #atmLocations)]
    local atmPos = Vector3.new(randomATM.coords[1], randomATM.coords[2] + 3, randomATM.coords[3])
    teleportTo(atmPos.X, atmPos.Y, atmPos.Z)
-   task.wait(0.5)
-   lookAtWithCamera(atmPos)
-   fireProximityPromptWithLook()
-   task.wait(0.3)
+   task.wait(0.8)
+   for i = 1, 3 do
+      fireAllPromptsInRange()
+      task.wait(0.3)
+   end
    return true
 end
 
@@ -354,6 +383,60 @@ local function stopATMFarm()
    isATMFarming = false
 end
 
+local isAutoPickup = false
+
+local function pickupDroppedTools()
+   local char = LocalPlayer.Character
+   if not char then return end
+   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
+   if not root then return end
+   local droppedTools = workspace:FindFirstChild("DroppedTools")
+   if not droppedTools then return end
+   for _, tool in pairs(droppedTools:GetChildren()) do
+      if tool:IsA("Tool") or tool:FindFirstChild("Handle") then
+         local toolPos = nil
+         if tool:IsA("Tool") and tool:FindFirstChild("Handle") then
+            toolPos = tool.Handle.Position
+         elseif tool:IsA("BasePart") then
+            toolPos = tool.Position
+         elseif tool:FindFirstChild("Handle") then
+            toolPos = tool.Handle.Position
+         else
+            for _, part in pairs(tool:GetDescendants()) do
+               if part:IsA("BasePart") then
+                  toolPos = part.Position
+                  break
+               end
+            end
+         end
+         if toolPos then
+            local distance = (root.Position - toolPos).Magnitude
+            if distance <= 15 then
+               teleportTo(toolPos.X, toolPos.Y + 2, toolPos.Z)
+               task.wait(0.5)
+               fireAllPromptsInRange()
+               task.wait(0.2)
+            end
+         end
+      end
+   end
+end
+
+local function startAutoPickup()
+   if isAutoPickup then return end
+   isAutoPickup = true
+   task.spawn(function()
+      while isAutoPickup do
+         pickupDroppedTools()
+         task.wait(0.5)
+      end
+   end)
+end
+
+local function stopAutoPickup()
+   isAutoPickup = false
+end
+
 local isFlourFarming = false
 
 local function startFlourFarm()
@@ -367,7 +450,7 @@ local function startFlourFarm()
             task.wait(1)
             for i = 1, 4 do
                if not isFlourFarming then break end
-               fireNearestPrompt()
+               fireAllPromptsInRange()
                task.wait(0.3)
             end
             task.wait(0.5)
@@ -391,7 +474,7 @@ local function startBoxFarm()
             if not isBoxFarming then break end
             teleportTo(location.coords[1], location.coords[2], location.coords[3])
             task.wait(2)
-            fireNearestPrompt()
+            fireAllPromptsInRange()
             task.wait(0.5)
          end
       end
@@ -440,7 +523,7 @@ FarmsTab:CreateToggle({
 SellTab:CreateSection("Auto Farms")
 
 SellTab:CreateToggle({
-   Name = "💰 Auto Sell Packs (6s Delay)",
+   Name = "💰 Auto Sell Packs (Pookie then Dan)",
    CurrentValue = false,
    Flag = "AutoSell",
    Callback = function(Value)
@@ -460,6 +543,15 @@ SellTab:CreateToggle({
 MiscTab:CreateButton({
    Name = "📊 Boost Intelligence & Luck to 999",
    Callback = function() boostStats() end,
+})
+
+MiscTab:CreateToggle({
+   Name = "🔄 Auto Pickup Dropped Tools",
+   CurrentValue = false,
+   Flag = "AutoPickup",
+   Callback = function(Value)
+      if Value then startAutoPickup() else stopAutoPickup() end
+   end,
 })
 
 MiscTab:CreateToggle({
@@ -496,7 +588,7 @@ MiscTab:CreateToggle({
 })
 
 MiscTab:CreateToggle({
-   Name = "⚡ Instant Proximity Prompts (All Prompts)",
+   Name = "⚡ Instant Proximity Prompts",
    CurrentValue = false,
    Flag = "InstantPrompts",
    Callback = function(Value)
@@ -515,14 +607,15 @@ MiscTab:CreateToggle({
             end
          end
       end
-      if Value then
-         monitorNewPrompts()
-      else
-         if promptConnection then
-            promptConnection:Disconnect()
-            promptConnection = nil
-         end
-      end
+   end,
+})
+
+MiscTab:CreateToggle({
+   Name = "🔄 Auto Run Proximity Prompts (Every 1s)",
+   CurrentValue = false,
+   Flag = "AutoPrompt",
+   Callback = function(Value)
+      if Value then startAutoPrompt() else stopAutoPrompt() end
    end,
 })
 
