@@ -1,4 +1,4 @@
--- Chirax │ Fight For New York V.1
+-- Chirax │ Fight For New York V.2
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Players = game:GetService("Players")
@@ -6,9 +6,9 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
 local Window = Rayfield:CreateWindow({
-   Name = "Chirax │ Fight For New York V.1",
+   Name = "Chirax │ Fight For New York V.2",
    Icon = "bug-play",
-   LoadingTitle = "Chirax │ Fight For New York V.1",
+   LoadingTitle = "Chirax │ Fight For New York V.2",
    LoadingSubtitle = "by w9ec",
    Theme = "Amethyst",
    ConfigurationSaving = { Enabled = false },
@@ -46,6 +46,7 @@ local atmLocations = {
    {name = "ATM 10", coords = {-128.7, 176.0, 727.9}}
 }
 
+-- ALL PackSelling Location Coordinates
 local packSellingLocations = {
    ["the playground"] = {coords = {-24.3, 158.2, -269.5}},
    ["the deli alley"] = {coords = {42.2, 176.5, 167.0}},
@@ -116,7 +117,7 @@ local function getClosestPromptPosition()
    return closestPosition, closestPrompt
 end
 
--- Auto-run proximity prompt every 5 seconds
+-- Auto-run proximity prompt every 1 second
 local autoPromptRunning = false
 local function startAutoPrompt()
    if autoPromptRunning then return end
@@ -127,10 +128,10 @@ local function startAutoPrompt()
          if promptPos and prompt then
             lookAtWithCamera(promptPos)
             prompt:InputHoldBegin()
-            task.wait(0.15)
+            task.wait(0.1)
             prompt:InputHoldEnd()
          end
-         task.wait(5)
+         task.wait(1)
       end
    end)
 end
@@ -144,7 +145,7 @@ local function fireProximityPromptWithLook()
    if not promptPos or not prompt then return false end
    lookAtWithCamera(promptPos)
    prompt:InputHoldBegin()
-   task.wait(0.15)
+   task.wait(0.1)
    prompt:InputHoldEnd()
    task.wait(0.05)
    return true
@@ -180,7 +181,7 @@ local function fireNearestPrompt()
    end
    if nearestPrompt then
       nearestPrompt:InputHoldBegin()
-      task.wait(0.15)
+      task.wait(0.1)
       nearestPrompt:InputHoldEnd()
    end
 end
@@ -244,18 +245,26 @@ end
 local function findNPCLocation(npcName)
    local packSelling = workspace:FindFirstChild("PackSelling")
    if not packSelling then return nil, nil end
+   
    for _, descendant in pairs(packSelling:GetDescendants()) do
-      if descendant:IsA("Model") and (descendant.Name == npcName or string.find(descendant.Name, npcName)) then
+      if descendant:IsA("Model") and (descendant.Name == npcName or string.lower(descendant.Name):find(string.lower(npcName))) then
          local current = descendant.Parent
          local locationName = nil
          while current and current ~= packSelling do
             locationName = current.Name
             current = current.Parent
          end
+         -- Check all saved locations
          if locationName and packSellingLocations[locationName] then
             local coords = packSellingLocations[locationName].coords
             local pos = Vector3.new(coords[1], coords[2], coords[3])
             return locationName, pos
+         elseif locationName then
+            -- If location exists but no saved coordinates, use NPC's actual position
+            local npcRoot = descendant:FindFirstChild("HumanoidRootPart") or descendant:FindFirstChild("Head")
+            if npcRoot then
+               return locationName, npcRoot.Position
+            end
          end
       end
    end
@@ -383,7 +392,7 @@ local function pickupDroppedTools()
                for _, prompt in pairs(tool:GetDescendants()) do
                   if prompt:IsA("ProximityPrompt") and prompt.Enabled then
                      prompt:InputHoldBegin()
-                     task.wait(0.15)
+                     task.wait(0.1)
                      prompt:InputHoldEnd()
                      promptFound = true
                      break
@@ -405,7 +414,7 @@ local function pickupDroppedTools()
                            end
                            if (toolPos - promptPosition).Magnitude <= 3 then
                               prompt:InputHoldBegin()
-                              task.wait(0.15)
+                              task.wait(0.1)
                               prompt:InputHoldEnd()
                               break
                            end
@@ -609,7 +618,7 @@ MiscTab:CreateToggle({
 })
 
 MiscTab:CreateToggle({
-   Name = "🔄 Auto Run Proximity Prompts (Every 5s)",
+   Name = "🔄 Auto Run Proximity Prompts (Every 1s)",
    CurrentValue = false,
    Flag = "AutoPrompt",
    Callback = function(Value)
