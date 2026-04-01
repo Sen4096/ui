@@ -4,12 +4,12 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
-local VirtualUser = game:GetService("VirtualUser")
+local RunService = game:GetService("RunService")
 
 local Window = Rayfield:CreateWindow({
-   Name = "Chirax │ Fight For New York V.2",
+   Name = "Chirax │ Fight For New York V.1",
    Icon = "bug-play",
-   LoadingTitle = "Chirax │ Fight For New York V.2",
+   LoadingTitle = "Chirax │ Fight For New York V.1",
    LoadingSubtitle = "by w9ec",
    Theme = "Amethyst",
    ConfigurationSaving = { Enabled = false },
@@ -75,21 +75,23 @@ local function teleportTo(x, y, z)
    return true
 end
 
+-- Force camera to look at a specific position
 local function lookAtWithCamera(targetPos)
    if not Camera then return end
-   local cameraPos = Camera.CFrame.Position
-   Camera.CFrame = CFrame.lookAt(cameraPos, targetPos)
+   if not targetPos then return end
+   Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetPos)
+   RunService.RenderStepped:Wait()
 end
 
--- Force fire all proximity prompts in range
-local function fireAllPromptsInRange()
+-- Get all prompts with their positions
+local function getAllPromptsInRange()
    local char = LocalPlayer.Character
-   if not char then return false end
+   if not char then return {} end
    
    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
-   if not root then return false end
+   if not root then return {} end
    
-   local fired = false
+   local prompts = {}
    for _, prompt in pairs(workspace:GetDescendants()) do
       if prompt:IsA("ProximityPrompt") and prompt.Enabled then
          local promptParent = prompt.Parent
@@ -104,19 +106,47 @@ local function fireAllPromptsInRange()
                promptPosition = promptParent.Position or Vector3.new()
             end
             local distance = (root.Position - promptPosition).Magnitude
-            if distance <= 10 then
-               lookAtWithCamera(promptPosition)
-               task.wait(0.05)
-               prompt:InputHoldBegin()
-               task.wait(0.2)
-               prompt:InputHoldEnd()
-               fired = true
-               task.wait(0.1)
+            if distance <= 15 then
+               table.insert(prompts, {prompt = prompt, position = promptPosition, distance = distance})
             end
          end
       end
    end
-   return fired
+   -- Sort by distance
+   table.sort(prompts, function(a, b) return a.distance < b.distance end)
+   return prompts
+end
+
+-- Fire all prompts with camera look
+local function fireAllPromptsWithLook()
+   local prompts = getAllPromptsInRange()
+   if #prompts == 0 then return false end
+   
+   for _, data in ipairs(prompts) do
+      -- Look at the prompt position
+      lookAtWithCamera(data.position)
+      task.wait(0.05)
+      -- Fire the prompt
+      data.prompt:InputHoldBegin()
+      task.wait(0.2)
+      data.prompt:InputHoldEnd()
+      task.wait(0.1)
+   end
+   return #prompts > 0
+end
+
+-- Fire only the closest prompt with camera look
+local function fireClosestPrompt()
+   local prompts = getAllPromptsInRange()
+   if #prompts == 0 then return false end
+   
+   local closest = prompts[1]
+   lookAtWithCamera(closest.position)
+   task.wait(0.05)
+   closest.prompt:InputHoldBegin()
+   task.wait(0.2)
+   closest.prompt:InputHoldEnd()
+   return true
 end
 
 -- Auto-run proximity prompt every 1 second
@@ -126,7 +156,7 @@ local function startAutoPrompt()
    autoPromptRunning = true
    task.spawn(function()
       while autoPromptRunning do
-         fireAllPromptsInRange()
+         fireAllPromptsWithLook()
          task.wait(1)
       end
    end)
@@ -134,82 +164,6 @@ end
 
 local function stopAutoPrompt()
    autoPromptRunning = false
-end
-
-local function fireProximityPromptWithLook()
-   local char = LocalPlayer.Character
-   if not char then return false end
-   
-   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
-   if not root then return false end
-   
-   local fired = false
-   for _, prompt in pairs(workspace:GetDescendants()) do
-      if prompt:IsA("ProximityPrompt") and prompt.Enabled then
-         local promptParent = prompt.Parent
-         if promptParent then
-            local promptPos = promptParent:FindFirstChild("Position")
-            local promptPosition
-            if promptPos then
-               promptPosition = promptPos.Position
-            elseif promptParent:IsA("BasePart") then
-               promptPosition = promptParent.Position
-            else
-               promptPosition = promptParent.Position or Vector3.new()
-            end
-            local distance = (root.Position - promptPosition).Magnitude
-            if distance <= 10 then
-               lookAtWithCamera(promptPosition)
-               task.wait(0.05)
-               prompt:InputHoldBegin()
-               task.wait(0.2)
-               prompt:InputHoldEnd()
-               fired = true
-               break
-            end
-         end
-      end
-   end
-   return fired
-end
-
-local function fireNearestPrompt()
-   local char = LocalPlayer.Character
-   if not char then return end
-   local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
-   if not root then return end
-   local nearestPrompt = nil
-   local nearestDistance = math.huge
-   local nearestPosition = nil
-   for _, prompt in pairs(workspace:GetDescendants()) do
-      if prompt:IsA("ProximityPrompt") and prompt.Enabled then
-         local promptParent = prompt.Parent
-         if promptParent then
-            local promptPos = promptParent:FindFirstChild("Position")
-            local promptPosition
-            if promptPos then
-               promptPosition = promptPos.Position
-            elseif promptParent:IsA("BasePart") then
-               promptPosition = promptParent.Position
-            else
-               promptPosition = promptParent.Position or Vector3.new()
-            end
-            local distance = (root.Position - promptPosition).Magnitude
-            if distance <= prompt.MaxActivationDistance and distance < nearestDistance then
-               nearestDistance = distance
-               nearestPrompt = prompt
-               nearestPosition = promptPosition
-            end
-         end
-      end
-   end
-   if nearestPrompt then
-      lookAtWithCamera(nearestPosition)
-      task.wait(0.05)
-      nearestPrompt:InputHoldBegin()
-      task.wait(0.2)
-      nearestPrompt:InputHoldEnd()
-   end
 end
 
 local validItems = {
@@ -302,10 +256,10 @@ local function sellToNPC(npcName, locationName, targetPos)
    if not autoEquipItem() then return false end
    task.wait(0.5)
    teleportTo(targetPos.X, targetPos.Y + 3, targetPos.Z)
-   task.wait(0.8)
-   -- Fire all prompts in range multiple times to ensure it works
+   task.wait(1)
+   -- Fire all prompts 3 times to ensure it works
    for i = 1, 3 do
-      fireAllPromptsInRange()
+      fireAllPromptsWithLook()
       task.wait(0.3)
    end
    return true
@@ -357,9 +311,9 @@ local function useATM()
    local randomATM = atmLocations[math.random(1, #atmLocations)]
    local atmPos = Vector3.new(randomATM.coords[1], randomATM.coords[2] + 3, randomATM.coords[3])
    teleportTo(atmPos.X, atmPos.Y, atmPos.Z)
-   task.wait(0.8)
+   task.wait(1)
    for i = 1, 3 do
-      fireAllPromptsInRange()
+      fireAllPromptsWithLook()
       task.wait(0.3)
    end
    return true
@@ -414,7 +368,7 @@ local function pickupDroppedTools()
             if distance <= 15 then
                teleportTo(toolPos.X, toolPos.Y + 2, toolPos.Z)
                task.wait(0.5)
-               fireAllPromptsInRange()
+               fireAllPromptsWithLook()
                task.wait(0.2)
             end
          end
@@ -450,7 +404,7 @@ local function startFlourFarm()
             task.wait(1)
             for i = 1, 4 do
                if not isFlourFarming then break end
-               fireAllPromptsInRange()
+               fireClosestPrompt()
                task.wait(0.3)
             end
             task.wait(0.5)
@@ -474,7 +428,7 @@ local function startBoxFarm()
             if not isBoxFarming then break end
             teleportTo(location.coords[1], location.coords[2], location.coords[3])
             task.wait(2)
-            fireAllPromptsInRange()
+            fireClosestPrompt()
             task.wait(0.5)
          end
       end
