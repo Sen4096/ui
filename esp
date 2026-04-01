@@ -1,5 +1,5 @@
 -- if it's ui related it's at the very top
--- Chirax Menu
+-- Chirax │ Fight For New York V.1
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Players = game:GetService("Players")
@@ -12,9 +12,9 @@ local Camera = workspace.CurrentCamera
 -- Window Configuration
 -- ============================
 local Window = Rayfield:CreateWindow({
-   Name = "Chirax",
-   Icon = 0,
-   LoadingTitle = "Chirax Hub",
+   Name = "Chirax │ Fight For New York V.1",
+   Icon = "bug-play",
+   LoadingTitle = "Chirax │ Fight For New York V.1",
    LoadingSubtitle = "by w9ec",
    Theme = "Amethyst",
    ConfigurationSaving = { Enabled = false },
@@ -98,10 +98,6 @@ local function lookAtWithCamera(targetPos)
    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
    if not root then return end
    
-   -- Calculate direction to target
-   local direction = (targetPos - root.Position).Unit
-   
-   -- Set camera CFrame to look at target from current camera position
    local cameraPos = Camera.CFrame.Position
    Camera.CFrame = CFrame.lookAt(cameraPos, targetPos)
 end
@@ -154,11 +150,9 @@ local function fireProximityPromptWithLook()
    local promptPos, prompt = getClosestPromptPosition()
    if not promptPos or not prompt then return false end
    
-   -- Move camera to look at the prompt
    lookAtWithCamera(promptPos)
    task.wait(0.1)
    
-   -- Fire the prompt
    prompt:InputHoldBegin()
    task.wait(0.15)
    prompt:InputHoldEnd()
@@ -211,7 +205,7 @@ local function fireNearestPrompt()
 end
 
 -- ============================
--- Auto Equip Tool (pack, syrup, or candy) - IMPROVED
+-- Auto Equip Tool (pack, syrup, or candy)
 -- ============================
 local function autoEquipItem()
    local character = LocalPlayer.Character
@@ -219,16 +213,14 @@ local function autoEquipItem()
    
    if not character then return false end
    
-   -- First check what's currently equipped
    local currentTool = character:FindFirstChildOfClass("Tool")
    if currentTool then
       local name = currentTool.Name:lower()
       if name:find("pack$") or name:find("syrup$") or name:find("candy$") then
-         return true -- Already have correct item equipped
+         return true
       end
    end
    
-   -- Search for items in backpack first
    for _, tool in pairs(backpack:GetChildren()) do
       if tool:IsA("Tool") then
          local name = tool.Name:lower()
@@ -240,7 +232,6 @@ local function autoEquipItem()
       end
    end
    
-   -- Search in character inventory
    for _, tool in pairs(character:GetChildren()) do
       if tool:IsA("Tool") then
          local name = tool.Name:lower()
@@ -262,13 +253,11 @@ local function autoEquipDumpTool()
    
    if not character then return false end
    
-   -- First check what's currently equipped
    local currentTool = character:FindFirstChildOfClass("Tool")
    if currentTool and currentTool.Name:lower():find("dump") then
-      return true -- Already have dump tool equipped
+      return true
    end
    
-   -- Search for dump tool in backpack
    for _, tool in pairs(backpack:GetChildren()) do
       if tool:IsA("Tool") and tool.Name:lower():find("dump") then
          tool.Parent = character
@@ -277,7 +266,6 @@ local function autoEquipDumpTool()
       end
    end
    
-   -- Search in character inventory
    for _, tool in pairs(character:GetChildren()) do
       if tool:IsA("Tool") and tool.Name:lower():find("dump") then
          return true
@@ -376,7 +364,6 @@ end
 local isAutoSelling = false
 
 local function sellToNPC(npcName, npcPos)
-   -- Equip pack/syrup/candy item FIRST
    local equipped = autoEquipItem()
    if not equipped then
       return false
@@ -386,7 +373,6 @@ local function sellToNPC(npcName, npcPos)
    teleportTo(npcPos.X, npcPos.Y + 3, npcPos.Z)
    task.wait(0.5)
    
-   -- Move camera to look at the NPC
    lookAtWithCamera(npcPos)
    task.wait(0.1)
    
@@ -440,7 +426,6 @@ local function useATM()
    teleportTo(atmPos.X, atmPos.Y, atmPos.Z)
    task.wait(0.5)
    
-   -- Move camera to look at the ATM
    lookAtWithCamera(atmPos)
    task.wait(0.1)
    
@@ -513,7 +498,6 @@ local function pickupDroppedTools()
                teleportTo(toolPos.X, toolPos.Y + 2, toolPos.Z)
                task.wait(0.3)
                
-               -- Move camera to look at the tool
                lookAtWithCamera(toolPos)
                task.wait(0.1)
                
