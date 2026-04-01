@@ -59,7 +59,6 @@ local packSellingLocations = {
 }
 
 local noclipEnabled = false
-local instantPromptsEnabled = false
 local originalHoldDurations = {}
 local lastNPCLocation = {}
 local lastATMTime = 0
@@ -127,21 +126,45 @@ local function fireClosestPromptMultiple(times)
    end
 end
 
--- INSTANT PROXIMITY PROMPT SCANNER - Runs every tick (0 seconds)
-local instantScannerRunning = false
-local function startInstantScanner()
-   if instantScannerRunning then return end
-   instantScannerRunning = true
+-- INSTANT PROXIMITY PROMPT - Automatically scans for new prompts and makes them instant
+local instantPromptRunning = false
+local function startInstantPrompt()
+   if instantPromptRunning then return end
+   instantPromptRunning = true
+   
+   -- Make all existing prompts instant
+   for _, prompt in pairs(workspace:GetDescendants()) do
+      if prompt:IsA("ProximityPrompt") then
+         if not originalHoldDurations[prompt] then
+            originalHoldDurations[prompt] = prompt.HoldDuration
+         end
+         prompt.HoldDuration = 0
+      end
+   end
+   
+   -- Auto scan for new prompts and make them instant
    task.spawn(function()
-      while instantScannerRunning do
-         fireClosestPrompt()
-         task.wait() -- Runs every frame (0 seconds)
+      while instantPromptRunning do
+         for _, prompt in pairs(workspace:GetDescendants()) do
+            if prompt:IsA("ProximityPrompt") and not originalHoldDurations[prompt] then
+               originalHoldDurations[prompt] = prompt.HoldDuration
+               prompt.HoldDuration = 0
+            end
+         end
+         task.wait(0.1)
       end
    end)
 end
 
-local function stopInstantScanner()
-   instantScannerRunning = false
+local function stopInstantPrompt()
+   instantPromptRunning = false
+   -- Restore original hold durations
+   for prompt, duration in pairs(originalHoldDurations) do
+      if prompt and prompt:IsA("ProximityPrompt") then
+         prompt.HoldDuration = duration
+      end
+   end
+   originalHoldDurations = {}
 end
 
 local validItems = {
@@ -471,30 +494,11 @@ MiscTab:CreateToggle({
    CurrentValue = false,
    Flag = "InstantPrompts",
    Callback = function(Value)
-      instantPromptsEnabled = Value
-      for _, prompt in pairs(workspace:GetDescendants()) do
-         if prompt:IsA("ProximityPrompt") then
-            if Value then
-               if not originalHoldDurations[prompt] then
-                  originalHoldDurations[prompt] = prompt.HoldDuration
-               end
-               prompt.HoldDuration = 0
-            else
-               if originalHoldDurations[prompt] then
-                  prompt.HoldDuration = originalHoldDurations[prompt]
-               end
-            end
-         end
+      if Value then
+         startInstantPrompt()
+      else
+         stopInstantPrompt()
       end
-   end,
-})
-
-MiscTab:CreateToggle({
-   Name = "⚡ Instant Prompt",
-   CurrentValue = false,
-   Flag = "InstantScanner",
-   Callback = function(Value)
-      if Value then startInstantScanner() else stopInstantScanner() end
    end,
 })
 
