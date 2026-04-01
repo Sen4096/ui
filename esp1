@@ -1,5 +1,5 @@
 -- Chirax │ Fight For New York V.1
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -81,52 +81,21 @@ local function teleportTo(x, y, z)
    return true
 end
 
--- Fire a specific proximity prompt directly
-local function firePrompt(prompt)
-   if not prompt or not prompt:IsA("ProximityPrompt") then return false end
-   prompt:InputHoldBegin()
-   task.wait(0.2)
-   prompt:InputHoldEnd()
-   return true
-end
-
--- Find NPC and return its proximity prompt (from HumanoidRootPart.Node.ProximityPrompt)
-local function findNPCPrompt(npcName)
-   local packSelling = workspace:FindFirstChild("PackSelling")
-   if not packSelling then return nil, nil end
-   
-   for _, descendant in pairs(packSelling:GetDescendants()) do
-      if descendant:IsA("Model") and (descendant.Name == npcName or string.lower(descendant.Name):find(string.lower(npcName))) then
-         local rootPart = descendant:FindFirstChild("HumanoidRootPart")
-         if rootPart then
-            local node = rootPart:FindFirstChild("Node")
-            if node then
-               local prompt = node:FindFirstChild("ProximityPrompt")
-               if prompt and prompt:IsA("ProximityPrompt") then
-                  -- Get location folder name for teleport coordinates
-                  local locationCurrent = descendant.Parent
-                  local locationName = nil
-                  while locationCurrent and locationCurrent ~= packSelling do
-                     locationName = locationCurrent.Name
-                     locationCurrent = locationCurrent.Parent
-                  end
-                  local targetPos = nil
-                  if locationName and packSellingLocations[locationName] then
-                     local coords = packSellingLocations[locationName].coords
-                     targetPos = Vector3.new(coords[1], coords[2], coords[3])
-                  else
-                     targetPos = rootPart.Position
-                  end
-                  return prompt, locationName, targetPos
-               end
-            end
-         end
+-- Get prompt position
+local function getPromptPosition(prompt)
+   local parent = prompt.Parent
+   if parent:IsA("BasePart") then
+      return parent.Position
+   end
+   for _, child in pairs(parent:GetChildren()) do
+      if child:IsA("BasePart") then
+         return child.Position
       end
    end
-   return nil, nil, nil
+   return nil
 end
 
--- General function to get all prompts (for flour, box, ATMs)
+-- Get all prompts within range
 local function getAllPromptsInRange()
    local char = LocalPlayer.Character
    if not char then return {} end
@@ -137,23 +106,11 @@ local function getAllPromptsInRange()
    local prompts = {}
    for _, prompt in pairs(workspace:GetDescendants()) do
       if prompt:IsA("ProximityPrompt") and prompt.Enabled then
-         -- Try to get position from parent
-         local parent = prompt.Parent
-         local pos
-         if parent:IsA("BasePart") then
-            pos = parent.Position
-         else
-            for _, child in pairs(parent:GetChildren()) do
-               if child:IsA("BasePart") then
-                  pos = child.Position
-                  break
-               end
-            end
-         end
+         local pos = getPromptPosition(prompt)
          if pos then
             local distance = (root.Position - pos).Magnitude
             if distance <= 50 then
-               table.insert(prompts, {prompt = prompt, position = pos, distance = distance})
+               table.insert(prompts, {prompt = prompt, position = pos, distance = distance, name = prompt.Parent.Name})
             end
          end
       end
@@ -162,21 +119,42 @@ local function getAllPromptsInRange()
    return prompts
 end
 
+-- Fire the closest prompt
 local function fireClosestPrompt()
    local prompts = getAllPromptsInRange()
-   if #prompts == 0 then return false end
+   if #prompts == 0 then 
+      debugPrint("No prompts in range")
+      return false 
+   end
+   
    local closest = prompts[1]
+   debugPrint("Firing prompt: " .. (closest.name or "unknown") .. " at distance: " .. closest.distance)
    closest.prompt:InputHoldBegin()
    task.wait(0.2)
    closest.prompt:InputHoldEnd()
    return true
 end
 
+-- Fire multiple times
 local function fireClosestPromptMultiple(times)
    for i = 1, times do
       fireClosestPrompt()
       task.wait(0.2)
    end
+end
+
+-- List all prompts for debugging
+local function listAllPrompts()
+   debugPrint("=== Listing all ProximityPrompts in workspace ===")
+   local count = 0
+   for _, prompt in pairs(workspace:GetDescendants()) do
+      if prompt:IsA("ProximityPrompt") then
+         count = count + 1
+         local pos = getPromptPosition(prompt)
+         debugPrint(count .. ": " .. prompt.Parent:GetFullName() .. " | Position: " .. tostring(pos) .. " | Enabled: " .. tostring(prompt.Enabled))
+      end
+   end
+   debugPrint("Total prompts found: " .. count)
 end
 
 -- ========== Item Equipping ==========
@@ -258,6 +236,43 @@ local function autoEquipDumpTool()
    return false
 end
 
+-- ========== NPC Location ==========
+local function findNPCLocation(npcName)
+   local packSelling = workspace:FindFirstChild("PackSelling")
+   if not packSelling then 
+      debugPrint("PackSelling not found")
+      return nil, nil 
+   end
+   
+   for _, descendant in pairs(packSelling:GetDescendants()) do
+      if descendant:IsA("Model") and (descendant.Name == npcName or string.lower(descendant.Name):find(string.lower(npcName))) then
+         local locationCurrent = descendant.Parent
+         local locationName = nil
+         while locationCurrent and locationCurrent ~= packSelling do
+            locationName = locationCurrent.Name
+            locationCurrent = locationCurrent.Parent
+         end
+         
+         local pos = nil
+         if locationName and packSellingLocations[locationName] then
+            local coords = packSellingLocations[locationName].coords
+            pos = Vector3.new(coords[1], coords[2], coords[3])
+         elseif descendant:FindFirstChild("HumanoidRootPart") then
+            pos = descendant.HumanoidRootPart.Position
+         elseif descendant:FindFirstChild("Head") then
+            pos = descendant.Head.Position
+         end
+         
+         if pos then
+            debugPrint("Found " .. npcName .. " at " .. (locationName or "unknown") .. " pos: " .. tostring(pos))
+            return locationName, pos
+         end
+      end
+   end
+   debugPrint(npcName .. " not found")
+   return nil, nil
+end
+
 -- ========== Instant Proximity Prompts ==========
 local function startInstantPrompt()
    if instantPromptRunning then return end
@@ -279,6 +294,7 @@ local function startInstantPrompt()
             if prompt:IsA("ProximityPrompt") and not originalHoldDurations[prompt] then
                originalHoldDurations[prompt] = prompt.HoldDuration
                prompt.HoldDuration = 0
+               debugPrint("New prompt detected")
             end
          end
          task.wait(1)
@@ -297,33 +313,21 @@ local function stopInstantPrompt()
    originalHoldDurations = {}
 end
 
--- ========== Auto Sell Packs (Direct Prompt) ==========
+-- ========== Auto Sell Packs ==========
 local isAutoSelling = false
 
-local function sellToNPC(npcName)
-   local prompt, locationName, targetPos = findNPCPrompt(npcName)
-   if not prompt then
-      debugPrint("Could not find " .. npcName .. " prompt")
-      return false
-   end
-   if not targetPos then
-      debugPrint("No teleport position for " .. npcName)
-      return false
+local function sellToNPC(npcName, locationName, targetPos)
+   if not targetPos then return false end
+   if not autoEquipItem() then 
+      debugPrint("Failed to equip item")
+      return false 
    end
    
-   if not autoEquipItem() then
-      debugPrint("Failed to equip item for " .. npcName)
-      return false
-   end
-   
-   debugPrint("Teleporting to " .. locationName)
    teleportTo(targetPos.X, targetPos.Y + 3, targetPos.Z)
    task.wait(0.8)
    
-   debugPrint("Firing " .. npcName .. " prompt directly")
-   firePrompt(prompt)
-   task.wait(0.3)
-   firePrompt(prompt) -- fire twice for good measure
+   debugPrint("Firing prompts at " .. locationName)
+   fireClosestPromptMultiple(5)
    return true
 end
 
@@ -333,12 +337,26 @@ local function startAutoSell()
    debugPrint("Auto Sell ENABLED")
    task.spawn(function()
       while isAutoSelling do
-         if sellToNPC("Pookie") then
-            task.wait(3)
+         local pookieLoc, pookiePos = findNPCLocation("Pookie")
+         if pookiePos then
+            local last = lastNPCLocation["Pookie"]
+            if not last or last ~= pookieLoc then
+               sellToNPC("Pookie", pookieLoc, pookiePos)
+               lastNPCLocation["Pookie"] = pookieLoc
+               task.wait(3)
+            end
          end
+         
          if not isAutoSelling then break
-         if sellToNPC("Dan") then
-            task.wait(3)
+         
+         local danLoc, danPos = findNPCLocation("Dan")
+         if danPos then
+            local last = lastNPCLocation["Dan"]
+            if not last or last ~= danLoc then
+               sellToNPC("Dan", danLoc, danPos)
+               lastNPCLocation["Dan"] = danLoc
+               task.wait(3)
+            end
          end
          task.wait(1)
       end
@@ -496,6 +514,19 @@ MiscTab:CreateButton({
    Callback = function() boostStats() end,
 })
 
+MiscTab:CreateButton({
+   Name = "🔍 List All Proximity Prompts",
+   Callback = function() listAllPrompts() end,
+})
+
+MiscTab:CreateButton({
+   Name = "🔥 Test Fire Prompt",
+   Callback = function()
+      debugPrint("Manually firing prompt...")
+      fireClosestPrompt()
+   end,
+})
+
 MiscTab:CreateToggle({
    Name = "🕊️ Noclip",
    CurrentValue = false,
@@ -578,4 +609,4 @@ for _, loc in ipairs(locations) do
    })
 end
 
-debugPrint("Script loaded! Auto sell will now directly target Dan and Pookie's ProximityPrompt.")
+debugPrint("Script loaded! Use F9 to see console output.")
