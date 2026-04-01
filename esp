@@ -125,7 +125,6 @@ end
 local function fireClosestPrompt()
    local prompts = getAllPromptsInRange()
    if #prompts == 0 then 
-      -- Fallback to key press if no prompt found
       pressKey("e")
       return false
    end
