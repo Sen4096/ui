@@ -1,4 +1,4 @@
--- Chirax │ Fight For New York V.2
+-- Chirax │ Fight For New York V.1
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Players = game:GetService("Players")
@@ -6,9 +6,9 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
 local Window = Rayfield:CreateWindow({
-   Name = "Chirax │ Fight For New York V.2",
+   Name = "Chirax │ Fight For New York V.1",
    Icon = "bug-play",
-   LoadingTitle = "Chirax │ Fight For New York V.2",
+   LoadingTitle = "Chirax │ Fight For New York V.1",
    LoadingSubtitle = "by w9ec",
    Theme = "Amethyst",
    ConfigurationSaving = { Enabled = false },
@@ -61,7 +61,7 @@ local packSellingLocations = {
 local noclipEnabled = false
 local instantPromptsEnabled = false
 local originalHoldDurations = {}
-local lastNPCInfo = {}
+local lastNPCLocation = {}
 local lastATMTime = 0
 
 local function teleportTo(x, y, z)
@@ -74,7 +74,6 @@ local function teleportTo(x, y, z)
    return true
 end
 
--- Instant camera movement
 local function lookAtWithCamera(targetPos)
    if not Camera then return end
    local char = LocalPlayer.Character
@@ -115,6 +114,29 @@ local function getClosestPromptPosition()
       end
    end
    return closestPosition, closestPrompt
+end
+
+-- Auto-run proximity prompt every 5 seconds
+local autoPromptRunning = false
+local function startAutoPrompt()
+   if autoPromptRunning then return end
+   autoPromptRunning = true
+   task.spawn(function()
+      while autoPromptRunning do
+         local promptPos, prompt = getClosestPromptPosition()
+         if promptPos and prompt then
+            lookAtWithCamera(promptPos)
+            prompt:InputHoldBegin()
+            task.wait(0.15)
+            prompt:InputHoldEnd()
+         end
+         task.wait(5)
+      end
+   end)
+end
+
+local function stopAutoPrompt()
+   autoPromptRunning = false
 end
 
 local function fireProximityPromptWithLook()
@@ -259,25 +281,30 @@ local function startAutoSell()
    isAutoSelling = true
    task.spawn(function()
       while isAutoSelling do
-         local danLocation, danPos = findNPCLocation("Dan")
-         if danPos then
-            local lastInfo = lastNPCInfo["Dan"]
-            if not lastInfo or lastInfo.location ~= danLocation then
-               sellToNPC("Dan", danLocation, danPos)
-               lastNPCInfo["Dan"] = {location = danLocation, position = danPos}
-               task.wait(2)
-            end
-         end
-         if not isAutoSelling then break end
+         -- First scan for Pookie
          local pookieLocation, pookiePos = findNPCLocation("Pookie")
          if pookiePos then
-            local lastInfo = lastNPCInfo["Pookie"]
-            if not lastInfo or lastInfo.location ~= pookieLocation then
+            local lastLoc = lastNPCLocation["Pookie"]
+            if not lastLoc or lastLoc ~= pookieLocation then
                sellToNPC("Pookie", pookieLocation, pookiePos)
-               lastNPCInfo["Pookie"] = {location = pookieLocation, position = pookiePos}
+               lastNPCLocation["Pookie"] = pookieLocation
                task.wait(2)
             end
          end
+         
+         if not isAutoSelling then break end
+         
+         -- Then scan for Dan
+         local danLocation, danPos = findNPCLocation("Dan")
+         if danPos then
+            local lastLoc = lastNPCLocation["Dan"]
+            if not lastLoc or lastLoc ~= danLocation then
+               sellToNPC("Dan", danLocation, danPos)
+               lastNPCLocation["Dan"] = danLocation
+               task.wait(2)
+            end
+         end
+         
          task.wait(0.5)
       end
    end)
@@ -307,7 +334,7 @@ local function startATMFarm()
    isATMFarming = true
    task.spawn(function()
       while isATMFarming do
-         if tick() - lastATMTime >= 300 then -- 5 minutes (300 seconds)
+         if tick() - lastATMTime >= 300 then
             useATM()
             lastATMTime = tick()
          end
@@ -494,7 +521,7 @@ FarmsTab:CreateToggle({
 SellTab:CreateSection("Auto Farms")
 
 SellTab:CreateToggle({
-   Name = "💰 Auto Sell Packs (Dan & Pookie)",
+   Name = "💰 Auto Sell Packs (Pookie then Dan)",
    CurrentValue = false,
    Flag = "AutoSell",
    Callback = function(Value)
@@ -578,6 +605,15 @@ MiscTab:CreateToggle({
             end
          end
       end
+   end,
+})
+
+MiscTab:CreateToggle({
+   Name = "🔄 Auto Run Proximity Prompts (Every 5s)",
+   CurrentValue = false,
+   Flag = "AutoPrompt",
+   Callback = function(Value)
+      if Value then startAutoPrompt() else stopAutoPrompt() end
    end,
 })
 
