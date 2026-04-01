@@ -4,6 +4,8 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
+local VirtualUser = game:GetService("VirtualUser")
+local VirtualInput = game:GetService("VirtualInput")
 
 local Window = Rayfield:CreateWindow({
    Name = "Chirax │ Fight For New York V.1",
@@ -59,9 +61,10 @@ local packSellingLocations = {
 }
 
 local noclipEnabled = false
-local originalHoldDurations = {}
 local lastNPCLocation = {}
 local lastATMTime = 0
+local instantPromptRunning = false
+local originalHoldDurations = {}
 
 local function teleportTo(x, y, z)
    local char = LocalPlayer.Character
@@ -71,6 +74,18 @@ local function teleportTo(x, y, z)
    root.CFrame = CFrame.new(x, y, z)
    task.wait(0.1)
    return true
+end
+
+-- Emulate key press (E or Y)
+local function pressKey(key)
+   pcall(function()
+      VirtualInput:SendKeyEvent(key, true, game)
+      task.wait(0.05)
+      VirtualInput:SendKeyEvent(key, false, game)
+   end)
+   pcall(function()
+      VirtualUser:ClickButton1(Vector2.new(0, 0), 1)
+   end)
 end
 
 -- Get all prompts with their positions
@@ -106,10 +121,14 @@ local function getAllPromptsInRange()
    return prompts
 end
 
--- INSTANT fire the closest prompt
+-- Fire the closest prompt using key press
 local function fireClosestPrompt()
    local prompts = getAllPromptsInRange()
-   if #prompts == 0 then return false end
+   if #prompts == 0 then 
+      -- Fallback to key press if no prompt found
+      pressKey("e")
+      return false
+   end
    
    local closest = prompts[1]
    closest.prompt:InputHoldBegin()
@@ -118,7 +137,7 @@ local function fireClosestPrompt()
    return true
 end
 
--- Fire the closest prompt multiple times (for flour)
+-- Fire the closest prompt multiple times
 local function fireClosestPromptMultiple(times)
    for i = 1, times do
       fireClosestPrompt()
@@ -126,8 +145,94 @@ local function fireClosestPromptMultiple(times)
    end
 end
 
--- INSTANT PROXIMITY PROMPT - Automatically scans for new prompts and makes them instant
-local instantPromptRunning = false
+-- Auto equip packs in order: Red, Purple, Green, White
+local packOrder = {"Red Fun Flour Pack", "Purple Fun Flour Pack", "Green Fun Flour Pack", "White Fun Flour Pack"}
+local syrupOrder = {"Raspberry Syrup", "Blackberry Syrup", "Blueberry Syrup", "Goldberry Syrup"}
+
+local function autoEquipItem()
+   local character = LocalPlayer.Character
+   local backpack = LocalPlayer.Backpack
+   if not character then return false end
+   
+   -- Check if already have a pack equipped
+   local currentTool = character:FindFirstChildOfClass("Tool")
+   if currentTool then
+      for _, itemName in ipairs(packOrder) do
+         if currentTool.Name == itemName then return true end
+      end
+      for _, itemName in ipairs(syrupOrder) do
+         if currentTool.Name == itemName then return true end
+      end
+   end
+   
+   -- Try to equip packs in order
+   for _, itemName in ipairs(packOrder) do
+      for _, tool in pairs(backpack:GetChildren()) do
+         if tool:IsA("Tool") and tool.Name == itemName then
+            tool.Parent = character
+            task.wait(0.3)
+            return true
+         end
+      end
+      for _, tool in pairs(character:GetChildren()) do
+         if tool:IsA("Tool") and tool.Name == itemName then
+            return true
+         end
+      end
+   end
+   
+   -- Try to equip syrups in order if no packs
+   for _, itemName in ipairs(syrupOrder) do
+      for _, tool in pairs(backpack:GetChildren()) do
+         if tool:IsA("Tool") and tool.Name == itemName then
+            tool.Parent = character
+            task.wait(0.3)
+            return true
+         end
+      end
+      for _, tool in pairs(character:GetChildren()) do
+         if tool:IsA("Tool") and tool.Name == itemName then
+            return true
+         end
+      end
+   end
+   
+   return false
+end
+
+-- Auto equip dump tools in order: High, Mid, Medium, Low
+local dumpOrder = {"High", "Mid", "Medium", "Low"}
+
+local function autoEquipDumpTool()
+   local character = LocalPlayer.Character
+   local backpack = LocalPlayer.Backpack
+   if not character then return false end
+   
+   local currentTool = character:FindFirstChildOfClass("Tool")
+   if currentTool then
+      for _, itemName in ipairs(dumpOrder) do
+         if currentTool.Name:find(itemName) then return true end
+      end
+   end
+   
+   for _, itemName in ipairs(dumpOrder) do
+      for _, tool in pairs(backpack:GetChildren()) do
+         if tool:IsA("Tool") and tool.Name:find(itemName) then
+            tool.Parent = character
+            task.wait(0.3)
+            return true
+         end
+      end
+      for _, tool in pairs(character:GetChildren()) do
+         if tool:IsA("Tool") and tool.Name:find(itemName) then
+            return true
+         end
+      end
+   end
+   return false
+end
+
+-- INSTANT PROXIMITY PROMPT - Optimized version with less lag
 local function startInstantPrompt()
    if instantPromptRunning then return end
    instantPromptRunning = true
@@ -142,7 +247,7 @@ local function startInstantPrompt()
       end
    end
    
-   -- Auto scan for new prompts and make them instant
+   -- Auto scan for new prompts (every 1 second to reduce lag)
    task.spawn(function()
       while instantPromptRunning do
          for _, prompt in pairs(workspace:GetDescendants()) do
@@ -151,14 +256,13 @@ local function startInstantPrompt()
                prompt.HoldDuration = 0
             end
          end
-         task.wait(0.1)
+         task.wait(1)
       end
    end)
 end
 
 local function stopInstantPrompt()
    instantPromptRunning = false
-   -- Restore original hold durations
    for prompt, duration in pairs(originalHoldDurations) do
       if prompt and prompt:IsA("ProximityPrompt") then
          prompt.HoldDuration = duration
@@ -167,63 +271,7 @@ local function stopInstantPrompt()
    originalHoldDurations = {}
 end
 
-local validItems = {
-   "Blackberry Pack", "Blueberry Pack", "Goldberry Pack", "Raspberry Pack",
-   "Green Fun Flour Pack", "Purple Fun Flour Pack", "Red Fun Flour Pack", "White Fun Flour Pack",
-   "Blackberry Syrup", "Blueberry Syrup", "Goldberry Syrup", "Raspberry Syrup"
-}
-
-local function autoEquipItem()
-   local character = LocalPlayer.Character
-   local backpack = LocalPlayer.Backpack
-   if not character then return false end
-   local currentTool = character:FindFirstChildOfClass("Tool")
-   if currentTool then
-      for _, itemName in ipairs(validItems) do
-         if currentTool.Name == itemName then return true end
-      end
-   end
-   for _, tool in pairs(backpack:GetChildren()) do
-      if tool:IsA("Tool") then
-         for _, itemName in ipairs(validItems) do
-            if tool.Name == itemName then
-               tool.Parent = character
-               task.wait(0.3)
-               return true
-            end
-         end
-      end
-   end
-   for _, tool in pairs(character:GetChildren()) do
-      if tool:IsA("Tool") then
-         for _, itemName in ipairs(validItems) do
-            if tool.Name == itemName then return true end
-         end
-      end
-   end
-   return false
-end
-
-local function autoEquipDumpTool()
-   local character = LocalPlayer.Character
-   local backpack = LocalPlayer.Backpack
-   if not character then return false end
-   local currentTool = character:FindFirstChildOfClass("Tool")
-   if currentTool and currentTool.Name:lower():find("dump") then return true end
-   for _, tool in pairs(backpack:GetChildren()) do
-      if tool:IsA("Tool") and tool.Name:lower():find("dump") then
-         tool.Parent = character
-         task.wait(0.3)
-         return true
-      end
-   end
-   for _, tool in pairs(character:GetChildren()) do
-      if tool:IsA("Tool") and tool.Name:lower():find("dump") then return true end
-   end
-   return false
-end
-
--- Find Dan or Pookie by searching for their ProximityPrompt
+-- Find Dan or Pookie location
 local function findNPCLocation(npcName)
    local packSelling = workspace:FindFirstChild("PackSelling")
    if not packSelling then return nil, nil end
@@ -279,6 +327,13 @@ local function sellToNPC(npcName, locationName, targetPos)
    
    teleportTo(targetPos.X, targetPos.Y + 3, targetPos.Z)
    task.wait(0.5)
+   
+   -- Emulate E and Y key presses multiple times
+   for i = 1, 4 do
+      pressKey("e")
+      pressKey("y")
+      task.wait(0.2)
+   end
    
    fireClosestPromptMultiple(4)
    
@@ -494,11 +549,7 @@ MiscTab:CreateToggle({
    CurrentValue = false,
    Flag = "InstantPrompts",
    Callback = function(Value)
-      if Value then
-         startInstantPrompt()
-      else
-         stopInstantPrompt()
-      end
+      if Value then startInstantPrompt() else stopInstantPrompt() end
    end,
 })
 
