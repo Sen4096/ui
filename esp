@@ -1,20 +1,14 @@
--- if it's ui related it's at the very top
--- Chirax │ Fight For New York V.1
+-- Chirax │ Fight For New York V.2
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
-local VirtualUser = game:GetService("VirtualUser")
-local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 
--- ============================
--- Window Configuration
--- ============================
 local Window = Rayfield:CreateWindow({
-   Name = "Chirax │ Fight For New York V.1",
+   Name = "Chirax │ Fight For New York V.2",
    Icon = "bug-play",
-   LoadingTitle = "Chirax │ Fight For New York V.1",
+   LoadingTitle = "Chirax │ Fight For New York V.2",
    LoadingSubtitle = "by w9ec",
    Theme = "Amethyst",
    ConfigurationSaving = { Enabled = false },
@@ -22,17 +16,11 @@ local Window = Rayfield:CreateWindow({
    KeySystem = false
 })
 
--- ============================
--- Tabs
--- ============================
 local FarmsTab = Window:CreateTab("🌾 Farms", 0)
 local SellTab = Window:CreateTab("💰 Sell", 0)
 local MiscTab = Window:CreateTab("⚙️ Misc", 0)
 local TeleportTab = Window:CreateTab("📍 Teleport", 0)
 
--- ============================
--- Farm Tables Locations (Flour)
--- ============================
 local flourTables = {
    {name = "Table 1", coords = {429.3, 171.0, -400.4}},
    {name = "Table 2", coords = {396.6, 182.2, -395.0}},
@@ -40,17 +28,11 @@ local flourTables = {
    {name = "Table 4", coords = {429.2, 178.6, -399.9}}
 }
 
--- ============================
--- Box Farm Locations
--- ============================
 local boxLocations = {
    {name = "Van", coords = {142.6, 179.5, 191.6}},
    {name = "Place", coords = {120.6, 178.5, 216.1}}
 }
 
--- ============================
--- ATM Locations
--- ============================
 local atmLocations = {
    {name = "ATM 1", coords = {-101.2, 176.5, 1107.2}},
    {name = "ATM 2", coords = {-205.5, 155.2, -142.5}},
@@ -64,9 +46,6 @@ local atmLocations = {
    {name = "ATM 10", coords = {-128.7, 176.0, 727.9}}
 }
 
--- ============================
--- PackSelling Location Coordinates (Saved)
--- ============================
 local packSellingLocations = {
    ["the playground"] = {coords = {-24.3, 158.2, -269.5}},
    ["the deli alley"] = {coords = {42.2, 176.5, 167.0}},
@@ -79,18 +58,12 @@ local packSellingLocations = {
    ["warehouses"] = {coords = {-346.9, 175.9, 834.3}}
 }
 
--- ============================
--- Variables for toggles
--- ============================
 local noclipEnabled = false
 local instantPromptsEnabled = false
 local originalHoldDurations = {}
-local lastNPCInfo = {} -- Stores {location = locationName, position = pos}
+local lastNPCInfo = {}
 local lastATMTime = 0
 
--- ============================
--- Teleport Function
--- ============================
 local function teleportTo(x, y, z)
    local char = LocalPlayer.Character
    if not char then return false end
@@ -101,36 +74,24 @@ local function teleportTo(x, y, z)
    return true
 end
 
--- ============================
--- Move Camera to Look At Position
--- ============================
+-- Instant camera movement
 local function lookAtWithCamera(targetPos)
    if not Camera then return end
-   
    local char = LocalPlayer.Character
    if not char then return end
-   
    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
    if not root then return end
-   
-   local cameraPos = Camera.CFrame.Position
-   Camera.CFrame = CFrame.lookAt(cameraPos, targetPos)
+   Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetPos)
 end
 
--- ============================
--- Get Closest Prompt Position
--- ============================
 local function getClosestPromptPosition()
    local char = LocalPlayer.Character
    if not char then return nil end
-   
    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
    if not root then return nil end
-   
    local closestPrompt = nil
    local closestDistance = math.huge
    local closestPosition = nil
-   
    for _, prompt in pairs(workspace:GetDescendants()) do
       if prompt:IsA("ProximityPrompt") and prompt.Enabled then
          local promptParent = prompt.Parent
@@ -145,7 +106,6 @@ local function getClosestPromptPosition()
                promptPosition = promptParent.Position or Vector3.new()
             end
             local distance = (root.Position - promptPosition).Magnitude
-            
             if distance <= prompt.MaxActivationDistance and distance < closestDistance then
                closestDistance = distance
                closestPrompt = prompt
@@ -154,41 +114,27 @@ local function getClosestPromptPosition()
          end
       end
    end
-   
    return closestPosition, closestPrompt
 end
 
--- ============================
--- Fire Proximity Prompt (with camera look)
--- ============================
 local function fireProximityPromptWithLook()
    local promptPos, prompt = getClosestPromptPosition()
    if not promptPos or not prompt then return false end
-   
    lookAtWithCamera(promptPos)
-   task.wait(0.1)
-   
    prompt:InputHoldBegin()
    task.wait(0.15)
    prompt:InputHoldEnd()
    task.wait(0.05)
-   
    return true
 end
 
--- ============================
--- Fire Nearest Proximity Prompt (legacy)
--- ============================
 local function fireNearestPrompt()
    local char = LocalPlayer.Character
    if not char then return end
-   
    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
    if not root then return end
-   
    local nearestPrompt = nil
    local nearestDistance = math.huge
-   
    for _, prompt in pairs(workspace:GetDescendants()) do
       if prompt:IsA("ProximityPrompt") and prompt.Enabled then
          local promptParent = prompt.Parent
@@ -203,7 +149,6 @@ local function fireNearestPrompt()
                promptPosition = promptParent.Position or Vector3.new()
             end
             local distance = (root.Position - promptPosition).Magnitude
-            
             if distance <= prompt.MaxActivationDistance and distance < nearestDistance then
                nearestDistance = distance
                nearestPrompt = prompt
@@ -211,7 +156,6 @@ local function fireNearestPrompt()
          end
       end
    end
-   
    if nearestPrompt then
       nearestPrompt:InputHoldBegin()
       task.wait(0.15)
@@ -219,60 +163,49 @@ local function fireNearestPrompt()
    end
 end
 
--- ============================
--- Auto Equip Tool (pack, syrup, or candy)
--- ============================
+local validItems = {
+   "Blackberry Pack", "Blueberry Pack", "Goldberry Pack", "Raspberry Pack",
+   "Green Fun Flour Pack", "Purple Fun Flour Pack", "Red Fun Flour Pack", "White Fun Flour Pack",
+   "Blackberry Syrup", "Blueberry Syrup", "Goldberry Syrup", "Raspberry Syrup"
+}
+
 local function autoEquipItem()
    local character = LocalPlayer.Character
    local backpack = LocalPlayer.Backpack
-   
    if not character then return false end
-   
    local currentTool = character:FindFirstChildOfClass("Tool")
    if currentTool then
-      local name = currentTool.Name:lower()
-      if name:find("pack$") or name:find("syrup$") or name:find("candy$") then
-         return true
+      for _, itemName in ipairs(validItems) do
+         if currentTool.Name == itemName then return true end
       end
    end
-   
    for _, tool in pairs(backpack:GetChildren()) do
       if tool:IsA("Tool") then
-         local name = tool.Name:lower()
-         if name:find("pack$") or name:find("syrup$") or name:find("candy$") then
-            tool.Parent = character
-            task.wait(0.5)
-            return true
+         for _, itemName in ipairs(validItems) do
+            if tool.Name == itemName then
+               tool.Parent = character
+               task.wait(0.5)
+               return true
+            end
          end
       end
    end
-   
    for _, tool in pairs(character:GetChildren()) do
       if tool:IsA("Tool") then
-         local name = tool.Name:lower()
-         if name:find("pack$") or name:find("syrup$") or name:find("candy$") then
-            return true
+         for _, itemName in ipairs(validItems) do
+            if tool.Name == itemName then return true end
          end
       end
    end
-   
    return false
 end
 
--- ============================
--- Auto Equip Dump Tool
--- ============================
 local function autoEquipDumpTool()
    local character = LocalPlayer.Character
    local backpack = LocalPlayer.Backpack
-   
    if not character then return false end
-   
    local currentTool = character:FindFirstChildOfClass("Tool")
-   if currentTool and currentTool.Name:lower():find("dump") then
-      return true
-   end
-   
+   if currentTool and currentTool.Name:lower():find("dump") then return true end
    for _, tool in pairs(backpack:GetChildren()) do
       if tool:IsA("Tool") and tool.Name:lower():find("dump") then
          tool.Parent = character
@@ -280,40 +213,23 @@ local function autoEquipDumpTool()
          return true
       end
    end
-   
    for _, tool in pairs(character:GetChildren()) do
-      if tool:IsA("Tool") and tool.Name:lower():find("dump") then
-         return true
-      end
+      if tool:IsA("Tool") and tool.Name:lower():find("dump") then return true end
    end
-   
    return false
 end
 
--- ============================
--- Find NPC Location in PackSelling
--- Returns: locationName, position
--- ============================
 local function findNPCLocation(npcName)
    local packSelling = workspace:FindFirstChild("PackSelling")
-   if not packSelling then 
-      return nil, nil
-   end
-   
-   -- Search through all descendants to find Dan or Pookie
+   if not packSelling then return nil, nil end
    for _, descendant in pairs(packSelling:GetDescendants()) do
       if descendant:IsA("Model") and (descendant.Name == npcName or string.find(descendant.Name, npcName)) then
-         -- Found the NPC, now find its parent location folder
          local current = descendant.Parent
          local locationName = nil
-         
-         -- Traverse up to find the location folder (child of PackSelling)
          while current and current ~= packSelling do
             locationName = current.Name
             current = current.Parent
          end
-         
-         -- Check if we have saved coordinates for this location
          if locationName and packSellingLocations[locationName] then
             local coords = packSellingLocations[locationName].coords
             local pos = Vector3.new(coords[1], coords[2], coords[3])
@@ -321,45 +237,28 @@ local function findNPCLocation(npcName)
          end
       end
    end
-   
    return nil, nil
 end
 
--- ============================
--- Auto Sell Packs Function (Finds Dan and Pookie, uses saved coordinates)
--- ============================
 local isAutoSelling = false
 
 local function sellToNPC(npcName, locationName, targetPos)
-   -- Equip pack/syrup/candy item FIRST
-   local equipped = autoEquipItem()
-   if not equipped then
-      return false
-   end
+   if not targetPos then return false end
+   if not autoEquipItem() then return false end
    task.wait(0.5)
-   
-   -- Teleport to the saved location coordinates
    teleportTo(targetPos.X, targetPos.Y + 3, targetPos.Z)
    task.wait(0.5)
-   
-   -- Move camera to look at the NPC
    lookAtWithCamera(targetPos)
-   task.wait(0.1)
-   
-   -- Fire the proximity prompt
    fireProximityPromptWithLook()
    task.wait(0.3)
-   
    return true
 end
 
 local function startAutoSell()
    if isAutoSelling then return end
    isAutoSelling = true
-   
    task.spawn(function()
       while isAutoSelling do
-         -- Check for Dan
          local danLocation, danPos = findNPCLocation("Dan")
          if danPos then
             local lastInfo = lastNPCInfo["Dan"]
@@ -369,10 +268,7 @@ local function startAutoSell()
                task.wait(2)
             end
          end
-         
          if not isAutoSelling then break end
-         
-         -- Check for Pookie
          local pookieLocation, pookiePos = findNPCLocation("Pookie")
          if pookiePos then
             local lastInfo = lastNPCInfo["Pookie"]
@@ -382,7 +278,6 @@ local function startAutoSell()
                task.wait(2)
             end
          end
-         
          task.wait(0.5)
       end
    end)
@@ -392,43 +287,30 @@ local function stopAutoSell()
    isAutoSelling = false
 end
 
--- ============================
--- Auto ATM Farm (with camera look)
--- ============================
 local isATMFarming = false
 
 local function useATM()
    autoEquipDumpTool()
    task.wait(0.5)
-   
    local randomATM = atmLocations[math.random(1, #atmLocations)]
    local atmPos = Vector3.new(randomATM.coords[1], randomATM.coords[2] + 3, randomATM.coords[3])
-   
    teleportTo(atmPos.X, atmPos.Y, atmPos.Z)
    task.wait(0.5)
-   
    lookAtWithCamera(atmPos)
-   task.wait(0.1)
-   
    fireProximityPromptWithLook()
    task.wait(0.3)
-   
    return true
 end
 
 local function startATMFarm()
    if isATMFarming then return end
    isATMFarming = true
-   
    task.spawn(function()
       while isATMFarming do
-         local currentTime = tick()
-         
-         if currentTime - lastATMTime >= 180 then
+         if tick() - lastATMTime >= 300 then -- 5 minutes (300 seconds)
             useATM()
             lastATMTime = tick()
          end
-         
          task.wait(1)
       end
    end)
@@ -438,23 +320,15 @@ local function stopATMFarm()
    isATMFarming = false
 end
 
--- ============================
--- Auto Pickup Dropped Tools
--- ============================
 local isAutoPickup = false
 
 local function pickupDroppedTools()
    local char = LocalPlayer.Character
    if not char then return end
-   
    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("Head")
    if not root then return end
-   
    local droppedTools = workspace:FindFirstChild("DroppedTools")
-   if not droppedTools then 
-      return 
-   end
-   
+   if not droppedTools then return end
    for _, tool in pairs(droppedTools:GetChildren()) do
       if tool:IsA("Tool") or tool:FindFirstChild("Handle") then
          local toolPos = nil
@@ -472,16 +346,12 @@ local function pickupDroppedTools()
                end
             end
          end
-         
          if toolPos then
             local distance = (root.Position - toolPos).Magnitude
             if distance <= 15 then
                teleportTo(toolPos.X, toolPos.Y + 2, toolPos.Z)
                task.wait(0.3)
-               
                lookAtWithCamera(toolPos)
-               task.wait(0.1)
-               
                local promptFound = false
                for _, prompt in pairs(tool:GetDescendants()) do
                   if prompt:IsA("ProximityPrompt") and prompt.Enabled then
@@ -492,7 +362,6 @@ local function pickupDroppedTools()
                      break
                   end
                end
-               
                if not promptFound then
                   for _, prompt in pairs(workspace:GetDescendants()) do
                      if prompt:IsA("ProximityPrompt") and prompt.Enabled then
@@ -507,8 +376,7 @@ local function pickupDroppedTools()
                            else
                               promptPosition = promptParent.Position or Vector3.new()
                            end
-                           local promptDistance = (toolPos - promptPosition).Magnitude
-                           if promptDistance <= 3 then
+                           if (toolPos - promptPosition).Magnitude <= 3 then
                               prompt:InputHoldBegin()
                               task.wait(0.15)
                               prompt:InputHoldEnd()
@@ -528,7 +396,6 @@ end
 local function startAutoPickup()
    if isAutoPickup then return end
    isAutoPickup = true
-   
    task.spawn(function()
       while isAutoPickup do
          pickupDroppedTools()
@@ -541,29 +408,22 @@ local function stopAutoPickup()
    isAutoPickup = false
 end
 
--- ============================
--- Auto Flour Farm Function
--- ============================
 local isFlourFarming = false
 
 local function startFlourFarm()
    if isFlourFarming then return end
    isFlourFarming = true
-   
    task.spawn(function()
       while isFlourFarming do
          for _, table in ipairs(flourTables) do
             if not isFlourFarming then break end
-            
             teleportTo(table.coords[1], table.coords[2], table.coords[3])
             task.wait(1)
-            
             for i = 1, 4 do
                if not isFlourFarming then break end
                fireNearestPrompt()
                task.wait(0.3)
             end
-            
             task.wait(0.5)
          end
       end
@@ -574,23 +434,17 @@ local function stopFlourFarm()
    isFlourFarming = false
 end
 
--- ============================
--- Auto Box Farm Function
--- ============================
 local isBoxFarming = false
 
 local function startBoxFarm()
    if isBoxFarming then return end
    isBoxFarming = true
-   
    task.spawn(function()
       while isBoxFarming do
          for _, location in ipairs(boxLocations) do
             if not isBoxFarming then break end
-            
             teleportTo(location.coords[1], location.coords[2], location.coords[3])
             task.wait(2)
-            
             fireNearestPrompt()
             task.wait(0.5)
          end
@@ -602,13 +456,9 @@ local function stopBoxFarm()
    isBoxFarming = false
 end
 
--- ============================
--- Stats Boost Function
--- ============================
 local function boostStats()
    local playerName = LocalPlayer.Name
    local playerData = game:GetService("ReplicatedStorage"):FindFirstChild("PlayerData")
-   
    if playerData then
       local playerStats = playerData:FindFirstChild(playerName)
       if playerStats then
@@ -616,31 +466,19 @@ local function boostStats()
          if statistics then
             local luck = statistics:FindFirstChild("Luck")
             local intelligence = statistics:FindFirstChild("Intelligence")
-            
-            if luck then
-               luck.Value = 999
-            end
-            if intelligence then
-               intelligence.Value = 999
-            end
+            if luck then luck.Value = 999 end
+            if intelligence then intelligence.Value = 999 end
          end
       end
    end
 end
 
--- ============================
--- Farms Tab UI
--- ============================
 FarmsTab:CreateToggle({
    Name = "🔄 Auto Farm Flour",
    CurrentValue = false,
    Flag = "AutoFlourFarm",
    Callback = function(Value)
-      if Value then
-         startFlourFarm()
-      else
-         stopFlourFarm()
-      end
+      if Value then startFlourFarm() else stopFlourFarm() end
    end,
 })
 
@@ -649,17 +487,10 @@ FarmsTab:CreateToggle({
    CurrentValue = false,
    Flag = "AutoBoxFarm",
    Callback = function(Value)
-      if Value then
-         startBoxFarm()
-      else
-         stopBoxFarm()
-      end
+      if Value then startBoxFarm() else stopBoxFarm() end
    end,
 })
 
--- ============================
--- Sell Tab UI
--- ============================
 SellTab:CreateSection("Auto Farms")
 
 SellTab:CreateToggle({
@@ -667,35 +498,22 @@ SellTab:CreateToggle({
    CurrentValue = false,
    Flag = "AutoSell",
    Callback = function(Value)
-      if Value then
-         startAutoSell()
-      else
-         stopAutoSell()
-      end
+      if Value then startAutoSell() else stopAutoSell() end
    end,
 })
 
 SellTab:CreateToggle({
-   Name = "🏧 Auto Card Fraud (Every 3 Minutes)",
+   Name = "🏧 Auto Card Fraud (Every 5 Minutes)",
    CurrentValue = false,
    Flag = "AutoATM",
    Callback = function(Value)
-      if Value then
-         startATMFarm()
-      else
-         stopATMFarm()
-      end
+      if Value then startATMFarm() else stopATMFarm() end
    end,
 })
 
--- ============================
--- Misc Tab UI
--- ============================
 MiscTab:CreateButton({
    Name = "📊 Boost Intelligence & Luck to 999",
-   Callback = function()
-      boostStats()
-   end,
+   Callback = function() boostStats() end,
 })
 
 MiscTab:CreateToggle({
@@ -703,11 +521,7 @@ MiscTab:CreateToggle({
    CurrentValue = false,
    Flag = "AutoPickup",
    Callback = function(Value)
-      if Value then
-         startAutoPickup()
-      else
-         stopAutoPickup()
-      end
+      if Value then startAutoPickup() else stopAutoPickup() end
    end,
 })
 
@@ -717,7 +531,6 @@ MiscTab:CreateToggle({
    Flag = "Noclip",
    Callback = function(Value)
       noclipEnabled = Value
-      
       if Value then
          task.spawn(function()
             while noclipEnabled do
@@ -751,7 +564,6 @@ MiscTab:CreateToggle({
    Flag = "InstantPrompts",
    Callback = function(Value)
       instantPromptsEnabled = Value
-      
       for _, prompt in pairs(workspace:GetDescendants()) do
          if prompt:IsA("ProximityPrompt") then
             if Value then
@@ -769,9 +581,6 @@ MiscTab:CreateToggle({
    end,
 })
 
--- ============================
--- Teleport Locations with Emojis
--- ============================
 local locations = {
    {name = "🍗 BFC", coords = {631.2, 161.5, -113.7}},
    {name = "🏦 Bank", coords = {-107.6, 180.1, 1114.2}},
@@ -802,15 +611,11 @@ local locations = {
    {name = "🎠 The Playground", coords = {-24.3, 158.2, -269.5}}
 }
 
--- ============================
--- Create Teleport Buttons
--- ============================
 for _, loc in ipairs(locations) do
    TeleportTab:CreateButton({
       Name = loc.name,
       Callback = function()
-         local x, y, z = loc.coords[1], loc.coords[2], loc.coords[3]
-         teleportTo(x, y, z)
+         teleportTo(loc.coords[1], loc.coords[2], loc.coords[3])
       end,
    })
 end
